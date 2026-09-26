@@ -1,12 +1,6 @@
 import { choice, noul, type ChoiceResponse, type NoulResponse, type Questions, type TypeSafeClient } from '@typesafe-ai/sdk'
 import type { Block, Unit } from './chunk'
-import type { Judgment } from './judgment'
-
-const ROLE_CRITERIA = {
-  core: "Implements what the PR is for; removing it breaks the normal path",
-  defense: 'Only matters when something goes wrong: validation, error handling, retries, timeouts, fallbacks, null guards',
-  support: 'Does not change behavior: logging, types, imports, wiring, boilerplate, config',
-}
+import { DEFAULT_ROLE_CRITERIA, type Judgment, type Role } from './judgment'
 
 export interface UnitInput {
   pr: { title: string; body: string }
@@ -17,10 +11,12 @@ export interface UnitInput {
   unit: Unit
   /** The unit's blocks. */
   blocks: Block[]
+  /** What each role means; the defaults unless the user reworded them. */
+  roles?: Record<Role, string>
 }
 
 /** One Jev request per unit: the unit's code with block markers as state, two questions per block. */
-export function buildRequest({ pr, policy, path, source, unit, blocks }: UnitInput) {
+export function buildRequest({ pr, policy, path, source, unit, blocks, roles = DEFAULT_ROLE_CRITERIA }: UnitInput) {
   const marker = new Map<number, string>()
   for (const block of blocks) for (const line of block.lines) marker.set(line, `[${block.id}]`)
   const code = source
@@ -35,7 +31,7 @@ export function buildRequest({ pr, policy, path, source, unit, blocks }: UnitInp
   for (const block of blocks) {
     questions[`${block.id}_role`] = choice(
       `What role does the code in \`blocks.${block.id}\` (marked [${block.id}] in \`code\`) play in this PR's change?`,
-      ROLE_CRITERIA,
+      roles,
     )
     if (policy) {
       questions[`${block.id}_excluded`] = noul(
@@ -58,7 +54,7 @@ export async function judgeUnit(client: TypeSafeClient, input: UnitInput, signal
   const result = await client.systemOne(buildRequest(input), { signal })
   const judgments: Record<string, Judgment> = {}
   for (const block of input.blocks) {
-    const role = result.answers[`${block.id}_role`] as ChoiceResponse<typeof ROLE_CRITERIA>
+    const role = result.answers[`${block.id}_role`] as ChoiceResponse<Record<Role, string>>
     const excluded = result.answers[`${block.id}_excluded`] as NoulResponse | undefined
     judgments[block.id] = {
       role: role.choice,

@@ -16,11 +16,11 @@ import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { CircleAlert, CircleCheck, FileWarning, ScrollText } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Judgment } from '../../core/judgment'
+import { DEFAULT_THRESHOLDS, type Judgment } from '../../core/judgment'
 import type { ReviewStart } from '../../shared/api'
 import { DiffFile, type Hover } from './DiffFile'
 import { errorMessage, LABEL, SHOWN } from './labels'
-import { openSettings } from './settingsDialog'
+import { openSettings, useSettingsDialog } from './settingsDialog'
 import { navigate, pullRequestUrl } from './route'
 import { rememberReview } from './reviewed'
 import { blockStates, lineCounts, type Category } from './rows'
@@ -47,9 +47,16 @@ export function Review({ repo, number }: { repo: string; number: number }) {
   const [explanations, setExplanations] = useState<Record<string, Explanation>>({})
   const reviewIdRef = useRef('')
 
+  const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS)
+  // Re-read when the settings card closes: new thresholds change ✂ and ? at once, without judging again.
+  const settingsOpen = useSettingsDialog().isOpen
   useEffect(() => {
-    window.yolk.getSettings().then((settings) => setLlmReady(settings.llm.ready))
-  }, [])
+    if (settingsOpen) return
+    window.yolk.getSettings().then((settings) => {
+      setLlmReady(settings.llm.ready)
+      setThresholds(settings.judging.thresholds)
+    })
+  }, [settingsOpen])
 
   useEffect(() => {
     const reviewId = crypto.randomUUID()
@@ -79,8 +86,8 @@ export function Review({ repo, number }: { repo: string; number: number }) {
 
   const judgmentError = status.state === 'error' ? status.message : undefined
   const states = useMemo(
-    () => review?.files.map((file, i) => blockStates(file, judgments[i] ?? {}, unitErrors[i] ?? {}, judgmentError)) ?? [],
-    [review, judgments, unitErrors, judgmentError],
+    () => review?.files.map((file, i) => blockStates(file, judgments[i] ?? {}, unitErrors[i] ?? {}, judgmentError, thresholds)) ?? [],
+    [review, judgments, unitErrors, judgmentError, thresholds],
   )
   const counts = useMemo(() => review?.files.map((file, i) => lineCounts(file, states[i])) ?? [], [review, states])
   const totals = useMemo(() => {

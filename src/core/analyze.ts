@@ -2,7 +2,7 @@ import { TypeSafeClient } from '@typesafe-ai/sdk'
 import { chunkFile, type Chunks, type HunkRange } from './chunk'
 import { parseDiff, type FileDiff } from './diff'
 import { judgeUnit } from './jev'
-import type { Judgment } from './judgment'
+import type { Judgment, Role } from './judgment'
 import { languageFor } from './languages'
 import { getFileAt, getPullRequest, getPullRequestDiff, type PullRequest } from './sources/gh'
 import { inlineTestRanges, isTestPath } from './testcode'
@@ -59,12 +59,14 @@ export interface UnitResult {
 export interface JudgeOptions {
   policy: string | null
   client: TypeSafeClient
+  /** Role criteria to ask with; the defaults when omitted. */
+  roles?: Record<Role, string>
   signal?: AbortSignal
   onUnit?: (result: UnitResult) => void
 }
 
 /** Asks Jev about every judgment unit, at most 8 requests at a time; results are also merged into `files`. */
-export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy, client, onUnit, signal }: JudgeOptions) {
+export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy, client, roles, onUnit, signal }: JudgeOptions) {
   let model = ''
   let inputTokens = 0
   const tasks = files.flatMap((file, fileIndex) => file.chunks?.units.map((unit) => ({ file, fileIndex, unit })) ?? [])
@@ -73,7 +75,7 @@ export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy,
     const blocks = file.chunks!.blocks.filter((b) => b.unit === unit.id && !file.testBlocks!.includes(b.id))
     if (!blocks.length) return
     try {
-      const result = await judgeUnit(client, { pr, policy, path: file.diff.path, source: file.source!, unit, blocks }, signal)
+      const result = await judgeUnit(client, { pr, policy, path: file.diff.path, source: file.source!, unit, blocks, roles }, signal)
       if (signal?.aborted) return
       file.judgments = { ...file.judgments, ...result.judgments }
       model = result.model

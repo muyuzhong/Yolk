@@ -1,12 +1,20 @@
 import { app, safeStorage } from 'electron'
 import { readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { DEFAULT_JUDGING, type JudgingSettings, type Role, type Thresholds } from '../core/judgment'
 import type { LlmConfig } from '../core/llm'
 import type { ConventionSource, Conventions, SettingsUpdate, SettingsView } from '../shared/api'
 
 export interface Settings {
   jev: { model: string; apiKey: string }
   llm: { baseURL: string; model: string; apiKey: string }
+  judging: JudgingSettings
+}
+
+/** Only what the user changed is stored, so a later change to a default reaches everyone who kept it. */
+interface JudgingOverrides {
+  thresholds?: Partial<Thresholds>
+  roles?: Partial<Record<Role, string>>
 }
 
 /** On disk the keys are encrypted with the OS keychain via safeStorage and stored as base64; conventions are plain text. */
@@ -14,12 +22,29 @@ interface StoredSettings {
   jev: { model: string; apiKey: string }
   llm: { baseURL: string; model: string; apiKey: string }
   conventions: Conventions
+  judging: JudgingOverrides
 }
 
 const DEFAULTS: StoredSettings = {
   jev: { model: 'jev-latest', apiKey: '' },
   llm: { baseURL: '', model: '', apiKey: '' },
   conventions: { default: '', repos: {} },
+  judging: {},
+}
+
+const withDefaults = ({ thresholds, roles }: JudgingOverrides): JudgingSettings => ({
+  thresholds: { ...DEFAULT_JUDGING.thresholds, ...thresholds },
+  roles: { ...DEFAULT_JUDGING.roles, ...roles },
+})
+
+/** Keeps the values that differ from their defaults; blank role text means the default. */
+function overrides({ thresholds, roles }: JudgingSettings): JudgingOverrides {
+  const changed = <T extends object>(values: T, defaults: T) =>
+    Object.fromEntries(Object.entries(values).filter(([key, value]) => value !== '' && value !== defaults[key as keyof T])) as Partial<T>
+  return {
+    thresholds: changed(thresholds, DEFAULT_JUDGING.thresholds),
+    roles: changed(Object.fromEntries(Object.entries(roles).map(([k, v]) => [k, v.trim()])) as Record<Role, string>, DEFAULT_JUDGING.roles),
+  }
 }
 
 const file = () => join(app.getPath('userData'), 'settings.json')
@@ -36,6 +61,7 @@ async function readStored(): Promise<StoredSettings> {
         default: stored.conventions?.default ?? '',
         repos: Object.fromEntries(Object.entries<string>(stored.conventions?.repos ?? {}).map(([repo, text]) => [repo.toLowerCase(), text])),
       },
+      judging: { thresholds: { ...stored.judging?.thresholds }, roles: { ...stored.judging?.roles } },
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULTS
@@ -48,6 +74,7 @@ export async function loadSettings(): Promise<Settings> {
   return {
     jev: { ...stored.jev, apiKey: decrypt(stored.jev.apiKey) },
     llm: { ...stored.llm, apiKey: decrypt(stored.llm.apiKey) },
+    judging: withDefaults(stored.judging),
   }
 }
 
@@ -78,6 +105,7 @@ export async function settingsView(): Promise<SettingsView> {
       ready: Boolean((stored.llm.baseURL || fallback.baseURL) && (stored.llm.apiKey || fallback.apiKey) && (stored.llm.model || fallback.model)),
     },
     conventions: stored.conventions,
+    judging: withDefaults(stored.judging),
   }
 }
 
@@ -103,7 +131,12 @@ export function saveSettings(update: SettingsUpdate): Promise<SettingsView> {
       apiKey: update.llm.apiKey === undefined ? stored.llm.apiKey : encrypt(update.llm.apiKey),
     },
     conventions: stored.conventions,
+    judging: stored.judging,
   }))
+}
+
+export function saveJudging(judging: JudgingSettings | null): Promise<SettingsView> {
+  return updateStored((stored) => ({ ...stored, judging: judging ? overrides(judging) : {} }))
 }
 
 export function saveConvention(repo: string | null, text: string): Promise<SettingsView> {

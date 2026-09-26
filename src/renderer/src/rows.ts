@@ -1,6 +1,6 @@
 import type { FileResult } from '../../core/analyze'
 import type { DiffLine } from '../../core/diff'
-import { isUnsure, suggestsRemoval, type Judgment, type Role } from '../../core/judgment'
+import { DEFAULT_THRESHOLDS, isUnsure, suggestsRemoval, type Judgment, type Role, type Thresholds } from '../../core/judgment'
 
 /** How an added line is colored. `none`: blank or unchunked; `pending`: not judged yet. */
 export type Category = Role | 'test' | 'pending' | 'failed' | 'none'
@@ -40,7 +40,13 @@ export interface BlockState {
   unit: string
 }
 
-export function blockStates(file: FileResult, judgments: Record<string, Judgment>, unitErrors: Record<string, string>, error?: string) {
+export function blockStates(
+  file: FileResult,
+  judgments: Record<string, Judgment>,
+  unitErrors: Record<string, string>,
+  error?: string,
+  thresholds: Thresholds = DEFAULT_THRESHOLDS,
+) {
   const states = new Map<string, BlockState>()
   for (const block of file.chunks?.blocks ?? []) {
     const j = judgments[block.id]
@@ -48,7 +54,7 @@ export function blockStates(file: FileResult, judgments: Record<string, Judgment
     if (file.testBlocks?.includes(block.id)) category = 'test'
     else if (j) category = j.role
     else if (unitErrors[block.unit] || error) category = 'failed'
-    states.set(block.id, { category, unsure: j ? isUnsure(j) : false, cut: j ? suggestsRemoval(j) : false, unit: block.unit })
+    states.set(block.id, { category, unsure: j ? isUnsure(j, thresholds) : false, cut: j ? suggestsRemoval(j, thresholds) : false, unit: block.unit })
   }
   return states
 }

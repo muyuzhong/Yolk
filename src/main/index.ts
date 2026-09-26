@@ -2,11 +2,11 @@ import { TypeSafeClient } from '@typesafe-ai/sdk'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, type WebContents } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { chunkPullRequest, judgeFiles } from '../core/analyze'
-import { suggestsRemoval } from '../core/judgment'
+import { suggestsRemoval, type JudgingSettings } from '../core/judgment'
 import { explain, explainMessages } from '../core/llm'
 import { currentUser, listPullRequests, listRepositories, repoKey, type PullRequestState } from '../core/sources/gh'
 import type { ReviewProgress, ReviewStart, SettingsUpdate } from '../shared/api'
-import { conventionFor, llmConfig, loadSettings, saveConvention, saveSettings, settingsView } from './settings'
+import { conventionFor, llmConfig, loadSettings, saveConvention, saveJudging, saveSettings, settingsView } from './settings'
 
 const reviews = new Map<number, { reviewId: string; controller: AbortController }>()
 /** The review each window shows; kept after judging ends because hover explanations read it. */
@@ -69,13 +69,14 @@ async function judgeInBackground(sender: WebContents, reviewId: string, { pr, fi
     if (!signal.aborted && !sender.isDestroyed()) sender.send('review:progress', progress)
   }
   try {
-    const { jev } = await loadSettings()
+    const { jev, judging } = await loadSettings()
     signal.throwIfAborted()
     // Without a key in settings the SDK falls back to TYPESAFE_API_KEY.
     const client = new TypeSafeClient({ defaultModel: jev.model, ...(jev.apiKey ? { apiKey: jev.apiKey } : {}) })
     const { model, inputTokens } = await judgeFiles(pr, files, {
       policy,
       client,
+      roles: judging.roles,
       signal,
       onUnit: (result) => send({ type: 'unit', reviewId, ...result }),
     })
@@ -94,7 +95,7 @@ async function explainBlock(sender: WebContents, reviewId: string, fileIndex: nu
   const unit = file.chunks!.units.find((u) => u.id === block.unit)!
   // judgeFiles merges judgments into these same file objects, so ✂ reflects what Jev has said so far.
   const judgment = file.judgments?.[blockId]
-  const cut = judgment !== undefined && suggestsRemoval(judgment)
+  const cut = judgment !== undefined && suggestsRemoval(judgment, (await loadSettings()).judging.thresholds)
   const input = { pr: review.pr, path: file.diff.path, source: file.source!, unit, block, policy: cut ? review.policy : null }
   const config = await llmConfig()
   signal.throwIfAborted()
@@ -122,6 +123,11 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('settings:convention', async (_event, repo: string | null, text: string) => {
     const settings = await saveConvention(repo, text)
+    explanations.clear()
+    return settings
+  })
+  ipcMain.handle('settings:judging', async (_event, judging: JudgingSettings | null) => {
+    const settings = await saveJudging(judging)
     explanations.clear()
     return settings
   })

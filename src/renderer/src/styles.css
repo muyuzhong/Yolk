@@ -508,3 +508,13 @@ section.file {
 .setting-row {
   padding-block: var(--spacing-4);
 }
+.settings-notice {
+  animation: settings-notice-in var(--duration-medium) var(--ease-out);
+}
+@keyframes settings-notice-in {
+  from { opacity: 0; translate: calc(var(--spacing-1) * -1) 0; }
+}
+/* The slider's "默认" mark label hangs below its track; keep the hint under it clear. */
+.setting-row .astryx-slider {
+  margin-block-end: var(--spacing-5);
+}

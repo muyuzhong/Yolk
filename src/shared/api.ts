@@ -1,5 +1,6 @@
 // The IPC surface between the main process and the renderer, exposed as `window.yolk`.
 import type { FileResult, UnitResult } from '../core/analyze'
+import type { JudgingSettings } from '../core/judgment'
 import type { PullRequest, PullRequestState, PullRequestSummary, RepositorySummary } from '../core/sources/gh'
 
 /**
@@ -21,6 +22,8 @@ export interface SettingsView {
   /** `ready`: base URL, key and model are all available from settings or the environment. */
   llm: { baseURL: string; model: string; hasKey: boolean; ready: boolean }
   conventions: Conventions
+  /** Effective thresholds and role criteria: the user's overrides over the defaults. */
+  judging: JudgingSettings
 }
 
 /** `apiKey` undefined keeps the stored key, '' clears it. */
@@ -53,6 +56,8 @@ export interface YolkApi {
   saveSettings(update: SettingsUpdate): Promise<SettingsView>
   /** Sets the default convention (`repo` null) or one repository's; empty text removes a repository's entry. */
   saveConvention(repo: string | null, text: string): Promise<SettingsView>
+  /** Replaces the user's judging overrides; pass the defaults (or null) to go back to them. */
+  saveJudging(judging: JudgingSettings | null): Promise<SettingsView>
   listRepositories(): Promise<RepositorySummary[]>
   listPullRequests(repo: string, state: PullRequestState): Promise<PullRequestList>
   /** Chunks the PR and returns it; judgments then arrive through `onReviewProgress` tagged with `reviewId`. */

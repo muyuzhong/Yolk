@@ -1,4 +1,5 @@
 // `window.yolk` for `npm run dev:web`: replays fixtures/yolk.json (from `npm run capture`) in a plain browser.
+import { DEFAULT_JUDGING, type JudgingSettings } from '../../../core/judgment'
 import type { Conventions, ReviewProgress, SettingsUpdate, SettingsView, YolkApi } from '../../../shared/api'
 import type { Fixture } from './fixture'
 
@@ -18,10 +19,13 @@ export async function mockApi(): Promise<YolkApi> {
     const saved: Conventions = JSON.parse(localStorage.getItem(CONVENTIONS) ?? '{"default":"","repos":{}}')
     return { ...saved, repos: Object.fromEntries(Object.entries(saved.repos).map(([repo, text]) => [repo.toLowerCase(), text])) }
   }
+  const JUDGING = 'yolk.mockJudging'
+  const readJudging = (): JudgingSettings => JSON.parse(localStorage.getItem(JUDGING) ?? 'null') ?? DEFAULT_JUDGING
   let settings: SettingsView = {
     jev: { model: 'jev-latest', hasKey: true },
     llm: { baseURL: 'http://mock', model: 'mock', hasKey: true, ready: true },
     conventions: readConventions(),
+    judging: readJudging(),
   }
   const listeners = new Set<(progress: ReviewProgress) => void>()
   const emit = (progress: ReviewProgress) => listeners.forEach((listener) => listener(progress))
@@ -34,7 +38,14 @@ export async function mockApi(): Promise<YolkApi> {
         jev: { model: update.jev.model, hasKey: update.jev.apiKey !== '' },
         llm: { ...update.llm, hasKey: update.llm.apiKey !== '', ready: true },
         conventions: settings.conventions,
+        judging: settings.judging,
       }
+      return settings
+    },
+    saveJudging: async (judging) => {
+      const next = judging ?? DEFAULT_JUDGING
+      localStorage.setItem(JUDGING, JSON.stringify(next))
+      settings = { ...settings, judging: next }
       return settings
     },
     saveConvention: async (repo, text) => {
