@@ -23,6 +23,14 @@ Jev judgments need a TypeSafe key in the environment. On this machine it lives i
 . ~/.config/typesafe/env
 ```
 
+Hover explanations need an OpenAI-compatible model: `OPENAI_BASE_URL`, `OPENAI_API_KEY` and `OPENAI_MODEL` in the
+environment (the throwaway profile has no settings). Without a real model, run the bundled mock. It replies with
+the lines the prompt marked `>>`, so you can check the right block was sent:
+
+```bash
+node .claude/skills/run-yolk/mock-llm.mjs 8787 > /tmp/yolk-mock-llm.log 2>&1 &
+```
+
 ## Setup
 
 ```bash
@@ -57,6 +65,25 @@ quit
 EOF
 ```
 
+Hover explanations against the mock. Hovering the same block again is served from the main-process cache, so
+the mock log shows one request per block:
+
+```bash
+. ~/.config/typesafe/env && OPENAI_BASE_URL=http://127.0.0.1:8787/v1 OPENAI_API_KEY=mock OPENAI_MODEL=mock-model \
+  node .claude/skills/run-yolk/driver.mjs <<'EOF'
+launch
+open https://github.com/honojs/hono/pull/5377
+wait-judged
+file last
+explain defense
+explain core
+ss explain-core
+explain defense
+quit
+EOF
+cat /tmp/yolk-mock-llm.log
+```
+
 Interactive, in tmux (poll for the marker each command prints):
 
 ```bash
@@ -86,6 +113,7 @@ profile in `/tmp/yolk-shots/userdata`, so `~/.config/yolk` is never touched.
 | `files` | file list with per-category line counts (核心 / 防御 / 支撑 / 测试) |
 | `file <n\|last>` | scroll file n (0-based) into view |
 | `hover-block <core\|defense\|support\|test\|pending>` | hover the first line of that category, print the tooltip |
+| `explain <category>` | hover like `hover-block`, wait for the general model's explanation, print it with the block id |
 | `core-only` | toggle 只看核心, print how many fold rows exist |
 | `settings` / `home` | navigate |
 | `ss [name]` | screenshot to `$SCREENSHOT_DIR/<name>.png` |
@@ -110,13 +138,17 @@ npm test
 npm run typecheck
 ```
 
-21 tests pass (chunking, diff parsing, Jev request building, test-code detection, display rows); none call an API.
+23 tests pass (chunking, diff parsing, Jev request building, explanation prompts, test-code detection, display
+rows); none call an API.
 
 ## Gotchas
 
 - **The window opens on the real desktop.** `--ozone-platform=headless` makes Electron 44 SIGSEGV here - even a
   ten-line app, with or without `--disable-gpu` - and there is no Xvfb, weston or cage; Xwayland has no headless
   mode. So the driver runs on the live KDE Wayland session and a Yolk window appears while it works.
+- **Your real mouse hovers rows too.** The window is on the live desktop, so a cursor resting over it hovers
+  whatever row scrolls under it: the tooltip switches and explanations get requested for random (often test)
+  blocks. The driver calls `setIgnoreMouseEvents(true)` right after launch; Playwright's CDP mouse still works.
 - **Jev is not deterministic for borderline blocks.** In honojs/hono#5377 the `?` block (lines 55-56) came back
   core in one run and support in the next. Assert on confident blocks (the try/catch there is defense in every
   run), not on unsure ones.
@@ -139,5 +171,9 @@ npm run typecheck
 - **`open failed: 打开 PR 失败：Command failed: gh pr view … Post "https://api.github.com/graphql": net/http: TLS handshake timeout`**:
   a transient network failure inside `gh`; the app shows it on the error page. Run `open` again. Review commands
   after a failed `open` stop at once with `ERROR: no review open`.
+- **`explanation for B1 · …: 解释失败：Connection error.`**: `OPENAI_BASE_URL` points at nothing (mock not running,
+  wrong port). The SDK retries twice first, so it takes a few seconds; the main process logs the full stack.
+- **`explanation for B1 · …: 在设置页配置通用模型后，这里会显示中文解释。`**: not all three `OPENAI_*` variables
+  were set when the driver started. No request is made.
 - **`node_modules/electron/dist` missing after `npm install`**: the Electron postinstall did not run; the Setup
   line runs `node node_modules/electron/install.js`.

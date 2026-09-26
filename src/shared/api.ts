@@ -5,7 +5,8 @@ import type { PullRequest, PullRequestSummary } from '../core/sources/gh'
 /** API keys never leave the main process; the renderer only learns whether one is set. */
 export interface SettingsView {
   jev: { model: string; hasKey: boolean }
-  llm: { baseURL: string; model: string; hasKey: boolean }
+  /** `ready`: base URL, key and model are all available from settings or the environment. */
+  llm: { baseURL: string; model: string; hasKey: boolean; ready: boolean }
 }
 
 /** `apiKey` undefined keeps the stored key, '' clears it. */
@@ -37,5 +38,7 @@ export interface YolkApi {
   /** Chunks the PR and returns it; judgments then arrive through `onReviewProgress` tagged with `reviewId`. */
   startReview(url: string, reviewId: string): Promise<ReviewStart>
   cancelReview(reviewId: string): void
+  /** A short Chinese explanation of one block from the general model; cached in the main process. */
+  explainBlock(reviewId: string, fileIndex: number, blockId: string): Promise<string>
   onReviewProgress(listener: (progress: ReviewProgress) => void): () => void
 }

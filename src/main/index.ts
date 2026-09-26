@@ -2,11 +2,17 @@ import { TypeSafeClient } from '@typesafe-ai/sdk'
 import { app, BrowserWindow, ipcMain, shell, type WebContents } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { chunkPullRequest, judgeFiles } from '../core/analyze'
+import { suggestsRemoval } from '../core/judgment'
+import { explain, explainMessages } from '../core/llm'
 import { getConvention, searchPullRequests } from '../core/sources/gh'
 import type { ReviewProgress, ReviewStart, SettingsUpdate } from '../shared/api'
-import { loadSettings, saveSettings, settingsView } from './settings'
+import { llmConfig, loadSettings, saveSettings, settingsView } from './settings'
 
 const reviews = new Map<number, { reviewId: string; controller: AbortController }>()
+/** The review each window shows; kept after judging ends because hover explanations read it. */
+const shown = new Map<number, { reviewId: string } & ReviewStart>()
+/** Cache by model and complete prompt, including the current convention. */
+const explanations = new Map<string, Promise<string>>()
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -34,16 +40,19 @@ async function startReview(sender: WebContents, url: string, reviewId: string): 
   const finish = () => {
     sender.removeListener('destroyed', cancel)
     if (reviews.get(senderId)?.controller === controller) reviews.delete(senderId)
+    if (shown.get(senderId)?.reviewId === reviewId) shown.delete(senderId)
   }
+  signal.addEventListener('abort', finish, { once: true })
   try {
     const { pr, files } = await chunkPullRequest(url)
     signal.throwIfAborted()
     const policy = await getConvention(pr)
     signal.throwIfAborted()
-    void judgeInBackground(sender, reviewId, { pr, files, policy }, signal).finally(finish)
+    shown.set(senderId, { reviewId, pr, files, policy })
+    void judgeInBackground(sender, reviewId, { pr, files, policy }, signal)
     return { pr, files, policy }
   } catch (error) {
-    finish()
+    controller.abort()
     throw error
   }
 }
@@ -70,9 +79,41 @@ async function judgeInBackground(sender: WebContents, reviewId: string, { pr, fi
   }
 }
 
+async function explainBlock(sender: WebContents, reviewId: string, fileIndex: number, blockId: string): Promise<string> {
+  const review = shown.get(sender.id)
+  if (review?.reviewId !== reviewId) throw new Error('这个审阅已经关闭')
+  const { signal } = reviews.get(sender.id)!.controller
+  const file = review.files[fileIndex]
+  const block = file.chunks!.blocks.find((b) => b.id === blockId)!
+  const unit = file.chunks!.units.find((u) => u.id === block.unit)!
+  // judgeFiles merges judgments into these same file objects, so ✂ reflects what Jev has said so far.
+  const judgment = file.judgments?.[blockId]
+  const cut = judgment !== undefined && suggestsRemoval(judgment)
+  const input = { pr: review.pr, path: file.diff.path, source: file.source!, unit, block, policy: cut ? review.policy : null }
+  const config = await llmConfig()
+  signal.throwIfAborted()
+  const key = JSON.stringify([config.baseURL, config.model, explainMessages(input)])
+  let explanation = explanations.get(key)
+  if (!explanation) {
+    explanation = explain(config, input, signal)
+    explanations.set(key, explanation)
+    const evict = () => {
+      if (explanations.get(key) === explanation) explanations.delete(key)
+    }
+    // Evict immediately on cancellation so reopening cannot reuse an aborted request.
+    signal.addEventListener('abort', evict, { once: true })
+    void explanation.catch(evict).finally(() => signal.removeEventListener('abort', evict))
+  }
+  return explanation
+}
+
 app.whenReady().then(() => {
   ipcMain.handle('settings:get', () => settingsView())
-  ipcMain.handle('settings:save', (_event, update: SettingsUpdate) => saveSettings(update))
+  ipcMain.handle('settings:save', async (_event, update: SettingsUpdate) => {
+    const settings = await saveSettings(update)
+    explanations.clear()
+    return settings
+  })
   ipcMain.handle('prs:list', async () => {
     const [reviewRequested, authored] = await Promise.all([
       searchPullRequests('--review-requested=@me'),
@@ -81,6 +122,9 @@ app.whenReady().then(() => {
     return { reviewRequested, authored }
   })
   ipcMain.handle('review:start', (event, url: string, reviewId: string) => startReview(event.sender, url, reviewId))
+  ipcMain.handle('review:explain', (event, reviewId: string, fileIndex: number, blockId: string) =>
+    explainBlock(event.sender, reviewId, fileIndex, blockId),
+  )
   ipcMain.on('review:cancel', (event, reviewId: string) => {
     const review = reviews.get(event.sender.id)
     if (review?.reviewId === reviewId) review.controller.abort()
