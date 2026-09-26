@@ -22,6 +22,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: Install RPM packaging tool
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
       - run: npm run dist -- --${{ matrix.arch }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

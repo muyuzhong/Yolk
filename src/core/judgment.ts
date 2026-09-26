@@ -33,6 +33,11 @@ export interface JudgingSettings {
   roles: Record<Role, string>
 }
 
+export interface JudgingUpdate {
+  thresholds?: Partial<Thresholds>
+  roles?: Partial<Record<Role, string>>
+}
+
 export const DEFAULT_JUDGING: JudgingSettings = { thresholds: DEFAULT_THRESHOLDS, roles: DEFAULT_ROLE_CRITERIA }
 
 export const isUnsure = (j: Judgment, t: Thresholds = DEFAULT_THRESHOLDS) => j.confidence < t.lowConfidence

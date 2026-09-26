@@ -1,6 +1,6 @@
 // The IPC surface between the main process and the renderer, exposed as `window.yolk`.
 import type { FileResult, UnitResult } from '../core/analyze'
-import type { JudgingSettings } from '../core/judgment'
+import type { JudgingSettings, JudgingUpdate } from '../core/judgment'
 import type { PullRequest, PullRequestState, PullRequestSummary, RepositorySummary } from '../core/sources/gh'
 
 /**
@@ -26,10 +26,10 @@ export interface SettingsView {
   judging: JudgingSettings
 }
 
-/** `apiKey` undefined keeps the stored key, '' clears it. */
+/** Omitted fields keep their stored value; an empty apiKey clears it. */
 export interface SettingsUpdate {
-  jev: { model: string; apiKey?: string }
-  llm: { baseURL: string; model: string; apiKey?: string }
+  jev?: { model?: string; apiKey?: string }
+  llm?: { baseURL?: string; model?: string; apiKey?: string }
 }
 
 export interface PullRequestList {
@@ -66,8 +66,8 @@ export interface YolkApi {
   saveSettings(update: SettingsUpdate): Promise<SettingsView>
   /** Sets the default convention (`repo` null) or one repository's; empty text removes a repository's entry. */
   saveConvention(repo: string | null, text: string): Promise<SettingsView>
-  /** Replaces the user's judging overrides; pass the defaults (or null) to go back to them. */
-  saveJudging(judging: JudgingSettings | null): Promise<SettingsView>
+  /** Updates only supplied judging fields; null restores all defaults. */
+  saveJudging(judging: JudgingUpdate | null): Promise<SettingsView>
   listRepositories(): Promise<RepositorySummary[]>
   listPullRequests(repo: string, state: PullRequestState): Promise<PullRequestList>
   /** Chunks the PR and returns it; judgments then arrive through `onReviewProgress` tagged with `reviewId`. */

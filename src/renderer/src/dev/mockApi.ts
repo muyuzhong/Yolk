@@ -35,15 +35,18 @@ export async function mockApi(): Promise<YolkApi> {
     getSettings: async () => settings,
     saveSettings: async (update: SettingsUpdate) => {
       settings = {
-        jev: { model: update.jev.model, hasKey: update.jev.apiKey !== '' },
-        llm: { ...update.llm, hasKey: update.llm.apiKey !== '', ready: true },
+        jev: { model: update.jev?.model ?? settings.jev.model, hasKey: update.jev?.apiKey === undefined ? settings.jev.hasKey : update.jev.apiKey !== '' },
+        llm: { baseURL: update.llm?.baseURL ?? settings.llm.baseURL, model: update.llm?.model ?? settings.llm.model, hasKey: update.llm?.apiKey === undefined ? settings.llm.hasKey : update.llm.apiKey !== '', ready: true },
         conventions: settings.conventions,
         judging: settings.judging,
       }
       return settings
     },
     saveJudging: async (judging) => {
-      const next = judging ?? DEFAULT_JUDGING
+      const next = judging ? {
+        thresholds: { ...settings.judging.thresholds, ...judging.thresholds },
+        roles: { ...settings.judging.roles, ...judging.roles },
+      } : DEFAULT_JUDGING
       localStorage.setItem(JUDGING, JSON.stringify(next))
       settings = { ...settings, judging: next }
       return settings

@@ -4,7 +4,7 @@ import { app, BrowserWindow, ipcMain, nativeTheme, shell, type WebContents } fro
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { chunkPullRequest, judgeFiles, type FileResult } from '../core/analyze'
-import { suggestsRemoval, type JudgingSettings } from '../core/judgment'
+import { suggestsRemoval, type JudgingUpdate } from '../core/judgment'
 import { complete, explainMessages, explainSelectionMessages, type ExplainSelectionInput, type SelectedLine } from '../core/llm'
 import { currentUser, listPullRequests, listRepositories, repoKey, type PullRequestState } from '../core/sources/gh'
 import { MAX_SELECTION, type ReviewProgress, type ReviewStart, type SelectionLine, type SettingsUpdate } from '../shared/api'
@@ -186,7 +186,7 @@ app.whenReady().then(() => {
     explanations.clear()
     return settings
   })
-  ipcMain.handle('settings:judging', async (_event, judging: JudgingSettings | null) => {
+  ipcMain.handle('settings:judging', async (_event, judging: JudgingUpdate | null) => {
     const settings = await saveJudging(judging)
     explanations.clear()
     return settings

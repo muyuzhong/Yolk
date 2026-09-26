@@ -15,8 +15,8 @@ import { TextArea } from '@astryxdesign/core/TextArea'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import { VStack } from '@astryxdesign/core/VStack'
 import { Check, Cpu, KeyRound, Link2, Plus, ScrollText, SlidersHorizontal, X } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
-import { DEFAULT_JUDGING, type JudgingSettings, type Role } from '../../core/judgment'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { DEFAULT_JUDGING, type JudgingUpdate, type Role } from '../../core/judgment'
 import type { SettingsUpdate, SettingsView } from '../../shared/api'
 import { ListSkeleton } from './RepositoryList'
 import { errorMessage } from './labels'
@@ -159,7 +159,12 @@ function Settings({ repo }: { repo?: string }) {
   const [section, setSection] = useState<Section>(focusRepo ? 'conventions' : 'models')
   // Key of the row being edited: one at a time, like a list you edit in place.
   const [editing, setEditing] = useState<string | undefined>(focusRepo ? `repo:${focusRepo}` : undefined)
-  const [draft, setDraft] = useState('')
+  const [draft, setDraftValue] = useState('')
+  const draftVersion = useRef(0)
+  const setDraft = (value: string) => {
+    draftVersion.current++
+    setDraftValue(value)
+  }
   const [newRepo, setNewRepo] = useState('')
   // A repository opened for its convention (from a review, or just added) that has none saved yet.
   const [pendingRepo, setPendingRepo] = useState(focusRepo)
@@ -190,9 +195,11 @@ function Settings({ repo }: { repo?: string }) {
     setDraft('')
   }
   const guard = async (action: () => Promise<SettingsView>, done: string) => {
+    const version = draftVersion.current
     try {
       setView(await action())
-      cancel()
+      // A completed save must not close a different row or discard newer typing.
+      if (version === draftVersion.current) cancel()
       setSaveError(undefined)
       setNotice(done)
     } catch (error) {
@@ -201,16 +208,16 @@ function Settings({ repo }: { repo?: string }) {
     }
   }
   /** Saves one model field; everything else keeps its stored value (an undefined key means "unchanged"). */
-  const saveModels = (change: (update: SettingsUpdate) => SettingsUpdate, done: string) =>
-    guard(() => window.yolk.saveSettings(change({ jev: { model: view!.jev.model }, llm: { baseURL: view!.llm.baseURL, model: view!.llm.model } })), done)
+  const saveModels = (update: SettingsUpdate, done: string) =>
+    guard(() => window.yolk.saveSettings(update), done)
   const saveConvention = (repo: string | null, text: string, done: string) =>
     guard(async () => {
       const next = await window.yolk.saveConvention(repo, text)
-      if (repo === pendingRepo) setPendingRepo(undefined)
+      setPendingRepo((current) => current === repo ? undefined : current)
       return next
     }, done)
-  const saveJudging = (change: (judging: JudgingSettings) => JudgingSettings, done: string) =>
-    guard(() => window.yolk.saveJudging(change(view!.judging)), done)
+  const saveJudging = (update: JudgingUpdate | null, done: string) =>
+    guard(() => window.yolk.saveJudging(update), done)
   const judgingChanged =
     view !== undefined && JSON.stringify(view.judging) !== JSON.stringify(DEFAULT_JUDGING)
 
@@ -281,10 +288,10 @@ function Settings({ repo }: { repo?: string }) {
                   onEdit={() => edit('jev.key', '')}
                   onCancel={cancel}
                   canSave={draft.trim() !== ''}
-                  onSave={() => saveModels((u) => ({ ...u, jev: { ...u.jev, apiKey: draft.trim() } }), 'Jev API Key 已保存')}
+                  onSave={() => saveModels({ jev: { apiKey: draft.trim() } }, 'Jev API Key 已保存')}
                   aside={
                     view.jev.hasKey
-                      ? { isDestructive: true, label: '清除已保存的 Key', onClick: () => saveModels((u) => ({ ...u, jev: { ...u.jev, apiKey: '' } }), '已清除 Jev API Key') }
+                      ? { isDestructive: true, label: '清除已保存的 Key', onClick: () => saveModels({ jev: { apiKey: '' } }, '已清除 Jev API Key') }
                       : undefined
                   }
                 >
@@ -297,7 +304,7 @@ function Settings({ repo }: { repo?: string }) {
                   onEdit={() => edit('jev.model', view.jev.model)}
                   onCancel={cancel}
                   canSave={draft.trim() !== '' && draft.trim() !== view.jev.model}
-                  onSave={() => saveModels((u) => ({ ...u, jev: { ...u.jev, model: draft.trim() } }), 'Jev 模型已保存')}
+                  onSave={() => saveModels({ jev: { model: draft.trim() } }, 'Jev 模型已保存')}
                 >
                   <TextInput
                     label="模型"
@@ -325,7 +332,7 @@ function Settings({ repo }: { repo?: string }) {
                   onEdit={() => edit('llm.baseURL', view.llm.baseURL)}
                   onCancel={cancel}
                   canSave={draft.trim() !== view.llm.baseURL}
-                  onSave={() => saveModels((u) => ({ ...u, llm: { ...u.llm, baseURL: draft.trim() } }), 'Base URL 已保存')}
+                  onSave={() => saveModels({ llm: { baseURL: draft.trim() } }, 'Base URL 已保存')}
                 >
                   <TextInput label="Base URL" isLabelHidden startIcon={Link2} value={draft} onChange={setDraft} placeholder="https://api.openai.com/v1" hasAutoFocus />
                 </SettingRow>
@@ -336,10 +343,10 @@ function Settings({ repo }: { repo?: string }) {
                   onEdit={() => edit('llm.key', '')}
                   onCancel={cancel}
                   canSave={draft.trim() !== ''}
-                  onSave={() => saveModels((u) => ({ ...u, llm: { ...u.llm, apiKey: draft.trim() } }), 'API Key 已保存')}
+                  onSave={() => saveModels({ llm: { apiKey: draft.trim() } }, 'API Key 已保存')}
                   aside={
                     view.llm.hasKey
-                      ? { isDestructive: true, label: '清除已保存的 Key', onClick: () => saveModels((u) => ({ ...u, llm: { ...u.llm, apiKey: '' } }), '已清除 API Key') }
+                      ? { isDestructive: true, label: '清除已保存的 Key', onClick: () => saveModels({ llm: { apiKey: '' } }, '已清除 API Key') }
                       : undefined
                   }
                 >
@@ -362,7 +369,7 @@ function Settings({ repo }: { repo?: string }) {
                   onEdit={() => edit('llm.model', view.llm.model)}
                   onCancel={cancel}
                   canSave={draft.trim() !== view.llm.model}
-                  onSave={() => saveModels((u) => ({ ...u, llm: { ...u.llm, model: draft.trim() } }), '模型已保存')}
+                  onSave={() => saveModels({ llm: { model: draft.trim() } }, '模型已保存')}
                 >
                   <TextInput label="模型" isLabelHidden value={draft} onChange={setDraft} placeholder="模型名，例如 gpt-4.1-mini" hasAutoFocus />
                 </SettingRow>
@@ -441,12 +448,12 @@ function Settings({ repo }: { repo?: string }) {
                   onEdit={() => edit('excluded', String(view.judging.thresholds.excluded))}
                   onCancel={cancel}
                   canSave={Number(draft) !== view.judging.thresholds.excluded}
-                  onSave={() => saveJudging((j) => ({ ...j, thresholds: { ...j.thresholds, excluded: Number(draft) } }), '✂ 阈值已保存')}
+                  onSave={() => saveJudging({ thresholds: { excluded: Number(draft) } }, '✂ 阈值已保存')}
                   aside={
                     view.judging.thresholds.excluded !== DEFAULT_JUDGING.thresholds.excluded
                       ? {
                           label: '恢复默认',
-                          onClick: () => saveJudging((j) => ({ ...j, thresholds: { ...j.thresholds, excluded: DEFAULT_JUDGING.thresholds.excluded } }), '✂ 阈值已恢复默认'),
+                          onClick: () => saveJudging({ thresholds: { excluded: DEFAULT_JUDGING.thresholds.excluded } }, '✂ 阈值已恢复默认'),
                         }
                       : undefined
                   }
@@ -471,13 +478,13 @@ function Settings({ repo }: { repo?: string }) {
                   onEdit={() => edit('lowConfidence', String(view.judging.thresholds.lowConfidence))}
                   onCancel={cancel}
                   canSave={Number(draft) !== view.judging.thresholds.lowConfidence}
-                  onSave={() => saveJudging((j) => ({ ...j, thresholds: { ...j.thresholds, lowConfidence: Number(draft) } }), '? 阈值已保存')}
+                  onSave={() => saveJudging({ thresholds: { lowConfidence: Number(draft) } }, '? 阈值已保存')}
                   aside={
                     view.judging.thresholds.lowConfidence !== DEFAULT_JUDGING.thresholds.lowConfidence
                       ? {
                           label: '恢复默认',
                           onClick: () =>
-                            saveJudging((j) => ({ ...j, thresholds: { ...j.thresholds, lowConfidence: DEFAULT_JUDGING.thresholds.lowConfidence } }), '? 阈值已恢复默认'),
+                            saveJudging({ thresholds: { lowConfidence: DEFAULT_JUDGING.thresholds.lowConfidence } }, '? 阈值已恢复默认'),
                         }
                       : undefined
                   }
@@ -512,11 +519,11 @@ function Settings({ repo }: { repo?: string }) {
                       onEdit={() => edit(`role:${id}`, current)}
                       onCancel={cancel}
                       canSave={draft.trim() !== '' && draft.trim() !== current}
-                      onSave={() => saveJudging((j) => ({ ...j, roles: { ...j.roles, [id]: draft.trim() } }), `${label}的标准已保存`)}
+                      onSave={() => saveJudging({ roles: { [id]: draft.trim() } }, `${label}的标准已保存`)}
                       aside={
                         isDefault
                           ? undefined
-                          : { label: '恢复默认', onClick: () => saveJudging((j) => ({ ...j, roles: { ...j.roles, [id]: DEFAULT_JUDGING.roles[id] } }), `${label}的标准已恢复默认`) }
+                          : { label: '恢复默认', onClick: () => saveJudging({ roles: { [id]: DEFAULT_JUDGING.roles[id] } }, `${label}的标准已恢复默认`) }
                       }
                     >
                       <TextArea label={`${label}的标准`} isLabelHidden value={draft} onChange={setDraft} rows={3} hasAutoFocus />
@@ -527,7 +534,7 @@ function Settings({ repo }: { repo?: string }) {
 
               {judgingChanged && (
                 <HStack gap={2} align="center">
-                  <Button label="全部恢复默认" onClick={() => saveJudging(() => DEFAULT_JUDGING, '判断标准已全部恢复默认')} />
+                  <Button label="全部恢复默认" onClick={() => saveJudging(null, '判断标准已全部恢复默认')} />
                   <Text type="supporting">阈值和三种角色的标准都回到内置的默认值。</Text>
                 </HStack>
               )}
