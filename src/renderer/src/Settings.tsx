@@ -12,7 +12,7 @@ import { VStack } from '@astryxdesign/core/VStack'
 import { KeyRound, Link2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { SettingsView } from '../../shared/api'
-import { ListSkeleton } from './Home'
+import { ListSkeleton } from './RepositoryList'
 import { errorMessage } from './labels'
 
 export function Settings() {

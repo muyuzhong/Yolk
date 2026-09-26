@@ -23,22 +23,23 @@ const need = () => {
 const status = () => need().evaluate(() => document.querySelector('.status')?.textContent ?? '(no review open)')
 // Pages live in the URL hash (#/, #/r/owner/repo, #/r/owner/repo/pull/N, #/settings).
 const goto = (hash) => need().evaluate((h) => (location.hash = h), hash)
-/** The home page is ready once `gh` has listed repositories (or failed to). */
-const waitForHome = () =>
-  need().waitForFunction(() => document.querySelector('.home-search') && /个仓库|个匹配的仓库|读取仓库列表失败/.test(document.body.innerText), null, {
+/** The repository list is ready once `gh` has listed repositories (or failed to). */
+const waitForRepos = () =>
+  need().waitForFunction(() => document.querySelector('.filter-field') && /个仓库|读取仓库列表失败/.test(document.body.innerText), null, {
     timeout: 60_000,
   })
-const homeSummary = () =>
+const reposSummary = () =>
   need().evaluate(() =>
-    [document.querySelector('.home-search')?.parentElement?.parentElement?.innerText.split('\n')[0], ...[...document.querySelectorAll('.repo-item')].slice(0, 5).map((e) => e.innerText.split('\n')[0])].join(' | '),
+    [document.querySelector('.page-meta')?.textContent, ...[...document.querySelectorAll('.repo-item')].slice(0, 5).map((e) => e.innerText.split('\n')[0])].join(' | '),
   )
-/** Search the home input and press Enter: owner/repo opens a repository, a PR link opens the review. */
+/** Type into the landing page's search box and take the first suggestion: a PR link opens the review, owner/repo the repository. */
 const submitHome = async (text) => {
   const p = need()
   await goto('#/')
-  await waitForHome()
-  await p.fill('.home-search input', text)
-  await p.press('.home-search input', 'Enter')
+  await p.waitForSelector('.landing-search input')
+  await p.fill('.landing-search input', text)
+  await p.waitForSelector('[role="option"]', { timeout: 60_000 })
+  await p.press('.landing-search input', 'Enter')
 }
 const waitForReview = async () => {
   const p = need()
@@ -79,8 +80,9 @@ const COMMANDS = {
       window.setSize(1440, 920)
       window.setIgnoreMouseEvents(true)
     })
-    await waitForHome()
-    console.log('launched:', await homeSummary())
+    await goto('#/repos')
+    await waitForRepos()
+    console.log('launched:', await reposSummary())
   },
 
   async ss(name) {
@@ -89,7 +91,7 @@ const COMMANDS = {
     console.log('screenshot:', file)
   },
 
-  /** Open a repository from the home page input and list its open PRs. */
+  /** Open a repository from the landing page's search box and list its open PRs. */
   async repo(name) {
     if (!name) throw new Error('usage: repo <owner/repo>')
     await submitHome(name)
@@ -106,10 +108,15 @@ const COMMANDS = {
       await p.click(`.state-tabs >> text="${labels[state]}"`)
       await p.waitForTimeout(150)
     }
-    await p.waitForFunction(() => document.querySelector('.pr-count') || document.body.innerText.includes('读取 PR 列表失败'), null, { timeout: 60_000 })
+    await p.waitForFunction(
+      () => (document.querySelector('.page-meta') && !document.querySelector('.page-meta').textContent.includes('读取中')) || document.body.innerText.includes('读取 PR 列表失败'),
+      null,
+      { timeout: 60_000 },
+    )
+    // Review requests sit on cards (.pr-card) above the list (.pr-item); both carry data-number.
     const rows = await p.evaluate(() => [
-      document.querySelector('.pr-count')?.textContent ?? document.body.innerText.match(/读取 PR 列表失败.*/)?.[0],
-      ...[...document.querySelectorAll('.pr-item')].slice(0, 8).map((b) => b.innerText.replace(/\n/g, '  ')),
+      document.body.innerText.match(/读取 PR 列表失败.*/)?.[0] ?? document.querySelector('.page-meta')?.textContent,
+      ...[...document.querySelectorAll('.pr-card, .pr-item')].slice(0, 8).map((b) => (b.classList.contains('pr-card') ? '[等你审阅] ' : '') + b.innerText.replace(/\n/g, '  ')),
     ])
     rows.forEach((r) => console.log(' ', r))
   },
@@ -117,13 +124,13 @@ const COMMANDS = {
   /** Open PR #n from the repository page list. */
   async pr(number) {
     const p = need()
-    const item = p.locator(`.pr-item[data-number="${number}"]`)
+    const item = p.locator(`.pr-item[data-number="${number}"], .pr-card[data-number="${number}"]`)
     if (!(await item.count())) throw new Error(`PR #${number} is not in the list - try \`prs all\``)
     await item.click()
     await waitForReview()
   },
 
-  /** Paste a PR link into the home input and wait for the chunked diff to render. */
+  /** Paste a PR link into the landing page's search box and wait for the chunked diff to render. */
   async open(url) {
     if (!url) throw new Error('usage: open <PR URL>')
     await submitHome(url)
@@ -199,8 +206,15 @@ const COMMANDS = {
 
   async home() {
     await goto('#/')
-    await waitForHome()
-    console.log('at home:', await homeSummary())
+    await need().waitForSelector('.landing-search input')
+    console.log('at home')
+  },
+
+  /** The full repository list (`#/repos`). */
+  async repos() {
+    await goto('#/repos')
+    await waitForRepos()
+    console.log('repositories:', await reposSummary())
   },
 
   async settings() {

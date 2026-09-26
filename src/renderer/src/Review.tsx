@@ -21,6 +21,7 @@ import type { ReviewStart } from '../../shared/api'
 import { DiffFile, type Hover } from './DiffFile'
 import { errorMessage, LABEL, SHOWN } from './labels'
 import { navigate, pullRequestUrl } from './route'
+import { rememberReview } from './reviewed'
 import { blockStates, lineCounts, type Category } from './rows'
 import { Tooltip, type Explanation } from './Tooltip'
 
@@ -86,6 +87,11 @@ export function Review({ repo, number }: { repo: string; number: number }) {
     for (const c of counts) for (const [category, n] of Object.entries(c) as [Category, number][]) sum[category] = (sum[category] ?? 0) + n
     return sum
   }, [counts])
+  // Once Jev has judged everything, remember the split so PR lists can show it next time.
+  useEffect(() => {
+    if (status.state !== 'done' || !review) return
+    rememberReview(url, { at: new Date().toISOString(), core: totals.core ?? 0, defense: totals.defense ?? 0, support: totals.support ?? 0 })
+  }, [status, review, url, totals])
   // Units with at least one block that goes to Jev (test blocks do not).
   const totalUnits = useMemo(
     () =>

@@ -8,8 +8,9 @@ committing.
 
 UI is built on Astryx (rules below). One deliberate exception: the diff view has no Astryx equivalent, so
 `DiffFile.tsx` (diff lines, fold rows), `Tooltip.tsx` and `styles.css` keep their own markup and a few fixed
-sizes (line height, gutter widths). Keep every color there an Astryx token (`--color-*`); don't rebuild them
-out of Astryx components.
+sizes (line height, gutter widths). The landing page (`.landing` in `styles.css`) is the other exception:
+a Paper Shaders backdrop and search-field border Astryx has no component for. Keep every color there an Astryx token
+(`--color-*`); don't rebuild them out of Astryx components.
 
 <!-- ASTRYX:START -->
 Astryx v0.6.3 · 164 components
