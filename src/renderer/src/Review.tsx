@@ -50,6 +50,8 @@ export function Review({ repo, number }: { repo: string; number: number }) {
   // Re-read when the settings card closes: new thresholds change ✂ and ? at once, without judging again.
   const settingsOpen = useSettingsDialog().isOpen
   useEffect(() => {
+    // Settings can change the model/key or the displayed ✂ marks. Pending answers belong to the old settings.
+    setExplanations({})
     if (settingsOpen) return
     window.yolk.getSettings().then((settings) => {
       setLlmReady(settings.llm.ready)
@@ -65,12 +67,17 @@ export function Review({ repo, number }: { repo: string; number: number }) {
     setJudgments({})
     setUnitErrors({})
     setJudgedUnits(0)
+    setExplanations({})
     setStatus({ state: 'judging' })
     const unsubscribe = window.yolk.onReviewProgress((progress) => {
       if (progress.reviewId !== reviewId) return
       if (progress.type === 'unit') {
         setJudgedUnits((n) => n + 1)
         const { fileIndex, unitId, judgments: unitJudgments, error } = progress
+        setExplanations((all) => {
+          const { [`${fileIndex}:${unitId}`]: _, ...rest } = all
+          return rest
+        })
         if (unitJudgments) setJudgments((all) => ({ ...all, [fileIndex]: { ...all[fileIndex], ...unitJudgments } }))
         if (error) setUnitErrors((all) => ({ ...all, [fileIndex]: { ...all[fileIndex], [unitId]: error } }))
       } else if (progress.type === 'done') setStatus({ state: 'done', model: progress.model, inputTokens: progress.inputTokens })
@@ -133,11 +140,17 @@ export function Review({ repo, number }: { repo: string; number: number }) {
     if (!hover || !hoverUnit || !unitKey || !llmReady) return
     const current = explanations[unitKey]
     if (current && current.state !== 'error') return
-    setExplanations((all) => ({ ...all, [unitKey]: { state: 'loading' } }))
+    const pending: Explanation = { state: 'loading' }
+    setExplanations((all) => ({ ...all, [unitKey]: pending }))
     const reviewId = reviewIdRef.current
+    const finish = (result: Explanation) => {
+      if (reviewIdRef.current !== reviewId) return
+      // Invalidation or a newer request removes/replaces this exact pending entry.
+      setExplanations((all) => all[unitKey] === pending ? { ...all, [unitKey]: result } : all)
+    }
     window.yolk.explainUnit(reviewId, hover.file, hoverUnit).then(
-      (text) => reviewIdRef.current === reviewId && setExplanations((all) => ({ ...all, [unitKey]: { state: 'done', text } })),
-      (e) => reviewIdRef.current === reviewId && setExplanations((all) => ({ ...all, [unitKey]: { state: 'error', text: errorMessage(e) } })),
+      (text) => finish({ state: 'done', text }),
+      (e) => finish({ state: 'error', text: errorMessage(e) }),
     )
   }, [hover, hoverUnit, unitKey, llmReady, explanations])
   useEffect(() => {
