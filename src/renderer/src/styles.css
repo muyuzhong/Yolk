@@ -18,7 +18,10 @@
   flex: 1;
 }
 
-/* Category legend: a colored dot, the name and a count, no chip behind them. */
+/*
+ * Category legend: a short bar in the category color (the same bar that marks lines in the diff), the name and a
+ * count, no chip behind them.
+ */
 .legend-item {
   display: inline-flex;
   align-items: center;
@@ -29,8 +32,8 @@
 }
 .legend-item::before {
   content: '';
-  width: var(--spacing-2);
-  height: var(--spacing-2);
+  width: var(--spacing-1);
+  height: var(--spacing-3);
   border-radius: var(--radius-full);
   background: var(--c);
 }
