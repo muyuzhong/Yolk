@@ -46,3 +46,13 @@ export function getFileAt(pr: PullRequest, path: string, ref: string): Promise<s
     '-H', 'Accept: application/vnd.github.raw',
   ])
 }
+
+/** The project convention `.yolk.md`, read from the base so a PR cannot change the rules it is judged by. */
+export async function getConvention(pr: PullRequest): Promise<string | null> {
+  try {
+    return await getFileAt(pr, '.yolk.md', pr.baseSha)
+  } catch (error) {
+    if (String((error as { stderr?: string }).stderr).includes('HTTP 404')) return null
+    throw error
+  }
+}

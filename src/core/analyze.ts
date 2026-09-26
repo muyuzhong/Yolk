@@ -1,14 +1,22 @@
+import { TypeSafeClient } from '@typesafe-ai/sdk'
 import { chunkFile, type Chunks, type HunkRange } from './chunk'
 import { parseDiff, type FileDiff } from './diff'
+import { judgeUnit, type Judgment } from './jev'
 import { languageFor } from './languages'
-import { getFileAt, getPullRequest, getPullRequestDiff, type PullRequest } from './sources/gh'
+import { getConvention, getFileAt, getPullRequest, getPullRequestDiff, type PullRequest } from './sources/gh'
 
 export interface FileResult {
   diff: FileDiff
   language?: string
   chunks?: Chunks
+  /** Lines of the new version, present when the file was chunked. */
+  source?: string[]
   /** Why the file is shown as a plain diff. */
   skipped?: string
+  /** Jev judgments by block id. */
+  judgments?: Record<string, Judgment>
+  /** Errors by unit id; the unit's blocks stay unjudged. */
+  unitErrors?: Record<string, string>
 }
 
 export interface PullRequestChunks {
@@ -26,9 +34,38 @@ export async function chunkPullRequest(url: string): Promise<PullRequestChunks> 
     if (!spec) return { diff, skipped: '暂不支持的语言' }
     if (!hunks.some((h) => h.added.length)) return { diff, language: spec.id, skipped: '没有新增行' }
     const source = await getFileAt(pr, diff.path, pr.headSha)
-    return { diff, language: spec.id, chunks: await chunkFile(spec, source, hunks) }
+    return { diff, language: spec.id, chunks: await chunkFile(spec, source, hunks), source: source.split('\n') }
   })
   return { pr, files }
+}
+
+export interface PullRequestJudgments extends PullRequestChunks {
+  policy: string | null
+  model: string
+  inputTokens: number
+}
+
+/** Chunks the PR and asks Jev about every judgment unit, at most 8 requests at a time. */
+export async function judgePullRequest(url: string, options: { policy?: string } = {}): Promise<PullRequestJudgments> {
+  const { pr, files } = await chunkPullRequest(url)
+  const policy = options.policy ?? (await getConvention(pr))
+  const client = new TypeSafeClient()
+  let model = ''
+  let inputTokens = 0
+
+  const tasks = files.flatMap((file) => file.chunks?.units.map((unit) => ({ file, unit })) ?? [])
+  await mapLimit(tasks, 8, async ({ file, unit }) => {
+    const blocks = file.chunks!.blocks.filter((b) => b.unit === unit.id)
+    try {
+      const result = await judgeUnit(client, { pr, policy, path: file.diff.path, source: file.source!, unit, blocks })
+      file.judgments = { ...file.judgments, ...result.judgments }
+      model = result.model
+      inputTokens += result.inputTokens
+    } catch (error) {
+      file.unitErrors = { ...file.unitErrors, [unit.id]: error instanceof Error ? error.message : String(error) }
+    }
+  })
+  return { pr, files, policy, model, inputTokens }
 }
 
 export function hunkRanges(diff: FileDiff): HunkRange[] {

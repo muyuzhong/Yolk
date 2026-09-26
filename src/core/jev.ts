@@ -1,0 +1,93 @@
+import { choice, noul, type ChoiceResponse, type NoulResponse, type Questions, type TypeSafeClient } from '@typesafe-ai/sdk'
+import type { Block, Unit } from './chunk'
+
+export type Role = 'core' | 'defense' | 'support'
+
+export interface Judgment {
+  role: Role
+  confidence: number
+  probabilities: Record<Role, number>
+  /** Probability that the project convention rules the block out; null without a convention. */
+  excluded: number | null
+}
+
+/** Initial thresholds (DESIGN.md §7.1); tune on real PRs. */
+export const LOW_CONFIDENCE = 0.5
+export const EXCLUDED_THRESHOLD = 0.7
+
+export const isUnsure = (j: Judgment) => j.confidence < LOW_CONFIDENCE
+/** ✂ ignores the role: a PR whose purpose is adding retries gets its retry code judged core. */
+export const suggestsRemoval = (j: Judgment) => (j.excluded ?? 0) >= EXCLUDED_THRESHOLD
+
+const ROLE_CRITERIA = {
+  core: "Implements what the PR is for; removing it breaks the normal path",
+  defense: 'Only matters when something goes wrong: validation, error handling, retries, timeouts, fallbacks, null guards',
+  support: 'Does not change behavior: logging, types, imports, wiring, boilerplate, config',
+}
+
+const DESCRIPTION_MAX_CHARS = 2000
+
+export interface UnitInput {
+  pr: { title: string; body: string }
+  policy: string | null
+  path: string
+  /** Lines of the new version of the file. */
+  source: string[]
+  unit: Unit
+  /** The unit's blocks. */
+  blocks: Block[]
+}
+
+/** One Jev request per unit: the unit's code with block markers as state, two questions per block. */
+export function buildRequest({ pr, policy, path, source, unit, blocks }: UnitInput) {
+  const marker = new Map<number, string>()
+  for (const block of blocks) for (const line of block.lines) marker.set(line, `[${block.id}]`)
+  const lines = blocks.flatMap((b) => b.lines)
+  const start = Math.min(unit.start, ...lines)
+  const end = Math.max(unit.end, ...lines)
+  const code = source
+    .slice(start - 1, end)
+    .map((text, i) => (marker.get(start + i) ?? '').padEnd(6) + text)
+    .join('\n')
+
+  const blockText = (block: Block) =>
+    block.lines.map((line, i) => (i > 0 && line > block.lines[i - 1] + 1 ? '...\n' : '') + source[line - 1]).join('\n')
+
+  const questions: Questions = {}
+  for (const block of blocks) {
+    questions[`${block.id}_role`] = choice(
+      `What role does the code in \`blocks.${block.id}\` (marked [${block.id}] in \`code\`) play in this PR's change?`,
+      ROLE_CRITERIA,
+    )
+    if (policy) {
+      questions[`${block.id}_excluded`] = noul(
+        `Does \`policy\` say this project does not need code like \`blocks.${block.id}\` at its current stage?`,
+      )
+    }
+  }
+
+  const state = {
+    pr: { title: pr.title, description: pr.body.slice(0, DESCRIPTION_MAX_CHARS) },
+    ...(policy ? { policy } : {}),
+    file: path,
+    code,
+    blocks: Object.fromEntries(blocks.map((b) => [b.id, blockText(b)])),
+  }
+  return { state, questions }
+}
+
+export async function judgeUnit(client: TypeSafeClient, input: UnitInput) {
+  const result = await client.systemOne(buildRequest(input))
+  const judgments: Record<string, Judgment> = {}
+  for (const block of input.blocks) {
+    const role = result.answers[`${block.id}_role`] as ChoiceResponse<typeof ROLE_CRITERIA>
+    const excluded = result.answers[`${block.id}_excluded`] as NoulResponse | undefined
+    judgments[block.id] = {
+      role: role.choice,
+      confidence: role.confidence,
+      probabilities: { ...role.probabilities },
+      excluded: excluded?.noul ?? null,
+    }
+  }
+  return { judgments, model: result.model, inputTokens: result.usage.input_tokens }
+}
