@@ -28,7 +28,9 @@ export async function inlineTestRanges(spec: LangSpec, source: string): Promise<
         let item = n.nextNamedSibling
         while (item && (spec.attachToNext.includes(item.type) || /comment$/.test(item.type))) item = item.nextNamedSibling
         if (item) {
-          ranges.push([n.startPosition.row + 1, item.endPosition.row + 1])
+          let first = n
+          for (let prev = n.previousNamedSibling; prev && (spec.attachToNext.includes(prev.type) || /comment$/.test(prev.type)); prev = prev.previousNamedSibling) first = prev
+          ranges.push([first.startPosition.row + 1, item.endPosition.row + 1])
           return
         }
       }

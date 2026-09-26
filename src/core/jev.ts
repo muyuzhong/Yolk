@@ -25,8 +25,6 @@ const ROLE_CRITERIA = {
   support: 'Does not change behavior: logging, types, imports, wiring, boilerplate, config',
 }
 
-const DESCRIPTION_MAX_CHARS = 2000
-
 export interface UnitInput {
   pr: { title: string; body: string }
   policy: string | null
@@ -42,12 +40,9 @@ export interface UnitInput {
 export function buildRequest({ pr, policy, path, source, unit, blocks }: UnitInput) {
   const marker = new Map<number, string>()
   for (const block of blocks) for (const line of block.lines) marker.set(line, `[${block.id}]`)
-  const lines = blocks.flatMap((b) => b.lines)
-  const start = Math.min(unit.start, ...lines)
-  const end = Math.max(unit.end, ...lines)
   const code = source
-    .slice(start - 1, end)
-    .map((text, i) => (marker.get(start + i) ?? '').padEnd(6) + text)
+    .slice(unit.start - 1, unit.end)
+    .map((text, i) => (marker.get(unit.start + i) ?? '').padEnd(6) + text)
     .join('\n')
 
   const blockText = (block: Block) =>
@@ -67,7 +62,7 @@ export function buildRequest({ pr, policy, path, source, unit, blocks }: UnitInp
   }
 
   const state = {
-    pr: { title: pr.title, description: pr.body.slice(0, DESCRIPTION_MAX_CHARS) },
+    pr: { title: pr.title, description: pr.body },
     ...(policy ? { policy } : {}),
     file: path,
     code,
