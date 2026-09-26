@@ -1,6 +1,6 @@
 /*
  * Astryx (reset + components + neutral theme) styles the app; this file only covers what Astryx has
- * no component for: the diff lines, category colors, and the hover card. Every color is an Astryx
+ * no component for: the diff lines, category colors, the hover card, and the landing page's shader layout. Every color is an Astryx
  * token, so light and dark mode follow the theme.
  */
 
@@ -56,9 +56,48 @@
 
 /* Repository page */
 .diffstat {
+  white-space: nowrap;
+}
+.diffstat-numbers {
   font-family: var(--font-family-code);
   font-size: var(--font-size-sm);
-  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* Five pixel blocks, the same square grain as the dithered backdrop. */
+.diffstat-blocks {
+  height: var(--spacing-2);
+  aspect-ratio: 14 / 2;
+  shape-rendering: crispEdges;
+}
+.diffstat-block.add {
+  fill: var(--color-icon-green);
+}
+.diffstat-block.del {
+  fill: var(--color-icon-red);
+}
+.diffstat-block.none {
+  fill: var(--color-border);
+}
+/* PR lifecycle in GitHub's colors: open green, draft gray, merged purple, closed red. */
+.pr-status {
+  flex-shrink: 0;
+}
+.pr-status.is-open {
+  color: var(--color-icon-green);
+}
+.pr-status.is-draft {
+  color: var(--color-icon-secondary);
+}
+.pr-status.is-merged {
+  color: var(--color-icon-purple);
+}
+.pr-status.is-closed {
+  color: var(--color-icon-red);
+}
+.pr-reviewed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
 }
 .additions {
   color: var(--color-icon-green);
@@ -287,4 +326,137 @@ section.file {
 }
 .small {
   font-size: var(--font-size-sm);
+}
+
+/*
+ * Landing page: a slow dithered field fading out toward the middle, and a pulsing border in the data
+ * palette colors around the search box. Both are WebGL canvases (Paper Shaders) fed with token colors.
+ */
+.landing {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.dither-backdrop {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+.dither-backdrop-canvas {
+  width: 100%;
+  height: 100%;
+}
+.landing-backdrop {
+  inset: 0;
+  mask-image: radial-gradient(ellipse 55% 50% at 50% 45%, transparent 30%, black 100%);
+}
+@font-face {
+  font-family: 'Departure Mono';
+  src: url('./fonts/DepartureMono-Regular.woff2') format('woff2');
+  font-display: swap;
+}
+/* Pixel type to match the dithered field; tabular width keeps the decoding title from jittering. */
+.landing-title {
+  font-family: 'Departure Mono', var(--font-family-code);
+  font-size: calc(var(--font-size-5xl) * 2);
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.landing-tagline {
+  font-family: var(--font-family-code);
+  letter-spacing: 0.02em;
+}
+.landing-hero {
+  width: min(100%, 640px);
+  transform: translateY(-8vh);
+}
+.landing-search {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+}
+/* A roomier field than Typeahead's lg size: this box is the whole page. */
+.landing-search .astryx-typeahead {
+  min-height: calc(var(--spacing-12) + var(--spacing-2));
+  padding-inline: var(--spacing-4);
+  border-color: transparent;
+  border-radius: var(--radius-container);
+  box-shadow: var(--shadow-med);
+}
+.landing-search .astryx-typeahead input {
+  font-size: var(--font-size-lg);
+}
+.landing .astryx-typeahead-dropdown {
+  border-radius: var(--radius-container);
+  box-shadow: var(--shadow-high);
+}
+.landing-search-border {
+  position: absolute;
+  inset: calc(var(--spacing-6) * -1);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* List pages: a heading that owns the row, tabular meta text, and a quiet filled filter on the right. */
+.list-page {
+  position: relative;
+  isolation: isolate;
+}
+/* The landing page's dither in the top-end corner, fading out before the title and the content. */
+.list-page-backdrop {
+  inset: 0 0 auto 0;
+  height: calc(var(--spacing-12) * 4);
+  opacity: 0.45;
+  mask-image: linear-gradient(to bottom, black 10%, transparent 90%), linear-gradient(to left, black 15%, transparent 65%);
+  mask-composite: intersect;
+}
+/* Its mirror in the bottom-start corner, so the page reads corner to corner. */
+.list-page-backdrop-bottom {
+  inset: auto auto 0 0;
+  width: 60%;
+  height: calc(var(--spacing-12) * 5);
+  opacity: 0.45;
+  mask-image: linear-gradient(to top, black 10%, transparent 90%), linear-gradient(to right, black 15%, transparent 75%);
+  mask-composite: intersect;
+}
+.page-heading {
+  flex: 1;
+  min-width: 0;
+}
+.page-meta {
+  font-variant-numeric: tabular-nums;
+}
+.filter-field {
+  position: relative;
+  width: min(100%, 280px);
+}
+.filter-field .astryx-text-input {
+  border-color: transparent;
+  border-radius: var(--radius-full);
+  background: var(--color-background-muted);
+  transition: background var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+.filter-field .astryx-text-input:hover {
+  background: var(--color-background-gray);
+}
+.filter-field .astryx-text-input:focus-within {
+  background: var(--color-background-surface);
+  box-shadow: var(--shadow-low), 0 0 0 var(--spacing-0-5) var(--color-accent-muted);
+}
+.filter-field-hint {
+  position: absolute;
+  right: var(--spacing-3);
+  pointer-events: none;
+}
+
+/* Repository rows: the chevron slides in on hover to say the whole row opens. */
+.repo-item .astryx-stack > svg:last-child {
+  opacity: 0;
+  translate: calc(var(--spacing-1) * -1) 0;
+  transition: opacity var(--duration-fast) var(--ease-out), translate var(--duration-fast) var(--ease-out);
+}
+.repo-item:hover .astryx-stack > svg:last-child {
+  opacity: 1;
+  translate: 0 0;
 }

@@ -9,17 +9,19 @@ import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav
 import { Theme } from '@astryxdesign/core/theme'
 import { TopNav, TopNavHeading } from '@astryxdesign/core/TopNav'
 import { neutralTheme } from '@astryxdesign/theme-neutral/built'
-import { EggFried, ExternalLink, FolderGit2, LayoutGrid, Settings as SettingsIcon } from 'lucide-react'
+import { EggFried, ExternalLink, FolderGit2, LayoutGrid, Pin, PinOff, Search, Settings as SettingsIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Home } from './Home'
-import { recentRepositories, rememberRepository } from './recent'
+import { Landing } from './Landing'
+import { rememberRepository, setPinned, useRepositoryShortcuts } from './recent'
 import { Repository } from './Repository'
+import { RepositoryList } from './RepositoryList'
 import { Review } from './Review'
 import { href, pullRequestUrl, repositoryUrl, useRoute, type Route } from './route'
 import { Settings } from './Settings'
 
 const TITLE: Record<Route['page'], (route: Route) => string> = {
-  home: () => '仓库',
+  home: () => '首页',
+  repos: () => '全部仓库',
   settings: () => '设置',
   repo: (route) => (route.page === 'repo' ? route.repo : ''),
   review: (route) => (route.page === 'review' ? `#${route.number} · ${route.repo}` : ''),
@@ -31,7 +33,7 @@ export function App() {
   const [reviewNavCollapsed, setReviewNavCollapsed] = useState(true)
   const [listNavCollapsed, setListNavCollapsed] = useState(false)
   const isReview = route.page === 'review'
-  const recent = recentRepositories()
+  const { pinned, recent } = useRepositoryShortcuts()
 
   // Pages are hash routes, so mouse back/forward buttons and Alt+←/→ walk the history like a browser.
   useEffect(() => {
@@ -71,31 +73,54 @@ export function App() {
               footer={<SideNavItem label="设置" icon={SettingsIcon} href={href({ page: 'settings' })} isSelected={route.page === 'settings'} />}
             >
               <SideNavSection title="导航" isHeaderHidden>
-                <SideNavItem label="全部仓库" icon={LayoutGrid} href={href({ page: 'home' })} isSelected={route.page === 'home'} />
+                <SideNavItem label="首页" icon={Search} href={href({ page: 'home' })} isSelected={route.page === 'home'} />
+                <SideNavItem label="全部仓库" icon={LayoutGrid} href={href({ page: 'repos' })} isSelected={route.page === 'repos'} />
               </SideNavSection>
+              {pinned.length > 0 && (
+                <SideNavSection title="已固定">
+                  {pinned.map((repo) => (
+                    <RepositoryNavItem key={repo} repo={repo} route={route} isPinned />
+                  ))}
+                </SideNavSection>
+              )}
               {recent.length > 0 && (
                 <SideNavSection title="最近打开">
                   {recent.map((repo) => (
-                    <SideNavItem
-                      key={repo}
-                      label={repo}
-                      icon={FolderGit2}
-                      href={href({ page: 'repo', repo })}
-                      isSelected={(route.page === 'repo' || route.page === 'review') && route.repo === repo}
-                    />
+                    <RepositoryNavItem key={repo} repo={repo} route={route} isPinned={false} />
                   ))}
                 </SideNavSection>
               )}
             </SideNav>
           }
         >
-          {route.page === 'home' && <Home />}
+          {route.page === 'home' && <Landing />}
+          {route.page === 'repos' && <RepositoryList />}
           {route.page === 'repo' && <Repository key={route.repo} repo={route.repo} />}
           {route.page === 'review' && <Review key={`${route.repo}#${route.number}`} repo={route.repo} number={route.number} />}
           {route.page === 'settings' && <Settings />}
         </AppShell>
       </Theme>
     </InternationalizationProvider>
+  )
+}
+
+function RepositoryNavItem({ repo, route, isPinned }: { repo: string; route: Route; isPinned: boolean }) {
+  return (
+    <SideNavItem
+      label={repo}
+      icon={FolderGit2}
+      href={href({ page: 'repo', repo })}
+      isSelected={(route.page === 'repo' || route.page === 'review') && route.repo === repo}
+      actions={
+        <IconButton
+          variant="ghost"
+          label={isPinned ? '取消固定' : '固定'}
+          tooltip={isPinned ? '取消固定' : '固定'}
+          icon={<Icon icon={isPinned ? PinOff : Pin} size="sm" />}
+          onClick={() => setPinned(repo, !isPinned)}
+        />
+      }
+    />
   )
 }
 
@@ -109,7 +134,7 @@ function TopBar({ route }: { route: Route }) {
       startContent={
         route.page !== 'home' && (
           <Breadcrumbs>
-            <BreadcrumbItem href={href({ page: 'home' })}>仓库</BreadcrumbItem>
+            {route.page !== 'settings' && <BreadcrumbItem href={href({ page: 'repos' })}>全部仓库</BreadcrumbItem>}
             {(route.page === 'repo' || route.page === 'review') && <BreadcrumbItem href={href({ page: 'repo', repo: route.repo })}>{route.repo}</BreadcrumbItem>}
             {route.page === 'review' && <BreadcrumbItem>#{route.number}</BreadcrumbItem>}
             {route.page === 'settings' && <BreadcrumbItem>设置</BreadcrumbItem>}

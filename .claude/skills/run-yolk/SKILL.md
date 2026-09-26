@@ -120,11 +120,11 @@ profile in `/tmp/yolk-shots/userdata`, so `~/.config/yolk` is never touched.
 
 | command | what it does |
 |---|---|
-| `launch` | start the built app, wait for the home page and its `gh` repository list |
-| `repo <owner/repo>` | open a repository from the home input, print its open PRs |
-| `prs [open\|merged\|closed\|all]` | switch the repository page's state tab, print up to 8 PRs |
+| `launch` | start the built app, wait for the `gh` repository list (`#/repos`) |
+| `repo <owner/repo>` | open a repository from the landing page's search box, print its open PRs |
+| `prs [open\|merged\|closed\|all]` | switch the repository page's state tab, print up to 8 PRs (review requests first, tagged `[等你审阅]`) |
 | `pr <number>` | open that PR from the repository list, wait for the chunked diff (`opened: …`) |
-| `open <PR URL>` | paste a PR URL into the home input, wait for the chunked diff (`opened: …`) |
+| `open <PR URL>` | paste a PR URL into the landing page's search box, wait for the chunked diff (`opened: …`) |
 | `wait-judged [seconds]` | wait until the header says 判断完成 / 判断失败, print it (default 120 s) |
 | `status` | print the header status now |
 | `files` | file list with per-category line counts (核心 / 防御 / 支撑 / 测试) |
@@ -133,7 +133,7 @@ profile in `/tmp/yolk-shots/userdata`, so `~/.config/yolk` is never touched.
 | `explain <category>` | hover like `hover-block`, wait for the general model's explanation, print it with the block id |
 | `core-only` | toggle 只看核心 with its keyboard shortcut C, print how many fold rows exist |
 | `theme <light\|dark\|system>` | force the color scheme (Electron nativeTheme + Playwright media emulation) |
-| `settings` / `home` | navigate by setting the URL hash (`#/settings`, `#/`); pages are hash routes |
+| `settings` / `home` / `repos` | navigate by setting the URL hash (`#/settings`, `#/`, `#/repos`); pages are hash routes |
 | `ss [name]` | screenshot to `$SCREENSHOT_DIR/<name>.png` |
 | `click <css>` / `text [css]` / `eval <js>` | generic DOM helpers |
 | `quit` | close the app and exit |
@@ -176,9 +176,9 @@ rows); none call an API.
   session with `bash --norc` as above.
 - **Playwright forces a light color scheme.** It emulates `prefers-color-scheme: light` by default, so setting
   Electron's `nativeTheme` alone changes nothing in the page. `theme dark` does both.
-- **Pages are hash routes** (`#/`, `#/r/owner/repo`, `#/r/owner/repo/pull/N`, `#/settings`). `eval location.hash =
+- **Pages are hash routes** (`#/`, `#/repos`, `#/r/owner/repo`, `#/r/owner/repo/pull/N`, `#/settings`). `eval location.hash =
   '...'` jumps anywhere; the UI is built with Astryx components, so look elements up by the app's own classes
-  (`.home-search`, `.pr-item[data-number]`, `.file-list-item`, `.line.add.cat-*`, `.tooltip`), not Astryx internals.
+  (`.landing-search`, `.filter-field`, `.pr-item[data-number]`, `.pr-card[data-number]`, `.file-list-item`, `.line.add.cat-*`, `.tooltip`), not Astryx internals.
 - **Test code never goes to Jev.** Test files and Rust `#[cfg(test)]` items render green at once and are not
   counted in "Jev 判断中 x/y".
 - The driver never saves settings: saving encrypts keys through Electron's safeStorage (the OS keyring), which
