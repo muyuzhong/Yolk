@@ -133,7 +133,7 @@ export function Repository({ repo }: { repo: string }) {
                   size="sm"
                   variant="ghost"
                   icon={<Icon icon={ScrollText} size="sm" />}
-                  label={conventions.repos[repo] ? '审阅约定 · 本仓库' : conventions.default ? '审阅约定 · 默认' : '审阅约定 · 未设置'}
+                  label={conventions.repos[repo.toLowerCase()] ? '审阅约定 · 本仓库' : conventions.default ? '审阅约定 · 默认' : '审阅约定 · 未设置'}
                   tooltip="Jev 按这份约定标出建议删除（✂）的代码"
                   onClick={() => openSettings(repo)}
                 />

@@ -91,7 +91,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
   // Once Jev has judged everything, remember the split so PR lists can show it next time.
   useEffect(() => {
     if (status.state !== 'done' || !review) return
-    rememberReview(url, { at: new Date().toISOString(), core: totals.core ?? 0, defense: totals.defense ?? 0, support: totals.support ?? 0 })
+    rememberReview(url, totals)
   }, [status, review, url, totals])
   // Units with at least one block that goes to Jev (test blocks do not).
   const totalUnits = useMemo(

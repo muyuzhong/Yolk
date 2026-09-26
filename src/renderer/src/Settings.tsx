@@ -123,7 +123,8 @@ export function SettingsDialog() {
   )
 }
 
-function Settings({ repo: focusRepo }: { repo?: string }) {
+function Settings({ repo }: { repo?: string }) {
+  const focusRepo = repo?.toLowerCase()
   const showToast = useToast()
   const [view, setView] = useState<SettingsView>()
   const [loadError, setLoadError] = useState<string>()
@@ -181,8 +182,9 @@ function Settings({ repo: focusRepo }: { repo?: string }) {
   const addRepo = () => {
     const target = parseTarget(newRepo)
     if (!target) return
-    setPendingRepo(target.repo)
-    edit(`repo:${target.repo}`, view?.conventions.repos[target.repo] ?? '')
+    const repo = target.repo.toLowerCase()
+    setPendingRepo(repo)
+    edit(`repo:${repo}`, view?.conventions.repos[repo] ?? '')
     setNewRepo('')
   }
 

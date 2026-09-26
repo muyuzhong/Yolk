@@ -8,7 +8,7 @@ import type { PullRequest, PullRequestState, PullRequestSummary, RepositorySumma
  */
 export interface Conventions {
   default: string
-  /** By repository key (OWNER/REPO, or HOST/OWNER/REPO off github.com). */
+  /** By lowercase repository key (OWNER/REPO, or HOST/OWNER/REPO off github.com). */
   repos: Record<string, string>
 }
 

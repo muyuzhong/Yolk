@@ -14,7 +14,10 @@ export async function mockApi(): Promise<YolkApi> {
 
   // Conventions persist in localStorage so a reload keeps them, like the real settings file would.
   const CONVENTIONS = 'yolk.mockConventions'
-  const readConventions = (): Conventions => JSON.parse(localStorage.getItem(CONVENTIONS) ?? '{"default":"","repos":{}}')
+  const readConventions = (): Conventions => {
+    const saved: Conventions = JSON.parse(localStorage.getItem(CONVENTIONS) ?? '{"default":"","repos":{}}')
+    return { ...saved, repos: Object.fromEntries(Object.entries(saved.repos).map(([repo, text]) => [repo.toLowerCase(), text])) }
+  }
   let settings: SettingsView = {
     jev: { model: 'jev-latest', hasKey: true },
     llm: { baseURL: 'http://mock', model: 'mock', hasKey: true, ready: true },
@@ -35,6 +38,7 @@ export async function mockApi(): Promise<YolkApi> {
       return settings
     },
     saveConvention: async (repo, text) => {
+      repo = repo?.toLowerCase() ?? null
       const { default: fallback, repos } = settings.conventions
       const { [repo ?? '']: _, ...others } = repos
       const trimmed = text.trim()
@@ -64,7 +68,7 @@ export async function mockApi(): Promise<YolkApi> {
       // The renderer merges judgments into what it receives; hand out a fresh copy each time. The judgments were
       // recorded without a convention, so the one applied here only changes what the review page shows.
       const { pr } = review.start
-      const repo = `${pr.host === 'github.com' ? '' : `${pr.host}/`}${pr.owner}/${pr.repo}`
+      const repo = `${pr.host === 'github.com' ? '' : `${pr.host}/`}${pr.owner}/${pr.repo}`.toLowerCase()
       const { default: fallback, repos } = settings.conventions
       const policy = repos[repo] || fallback || null
       return { ...structuredClone(review.start), policy, policySource: repos[repo] ? 'repo' : fallback ? 'default' : null }
