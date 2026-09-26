@@ -211,6 +211,7 @@ async function getUser(id) {                     // B1 函数外壳
   "policy": "MVP stage: no retries or fallbacks; validate input only at API boundaries.",
   "file": "src/api/user.ts",
   "code": "[B1] async function getUser(id) {\n[B2]   if (!id) throw new Error('id required');\n[B3]   try {\n...",
+  "diff": "@@ -2 +2 @@\n-  if (!id) return null;\n+  if (!id) throw new Error('id required');",
   "blocks": {
     "B2": "if (!id) throw new Error('id required');",
     "B3": "try {"
@@ -219,6 +220,7 @@ async function getUser(id) {                     // B1 函数外壳
 ```
 
 - `code` 是这个单元的新版本代码，新增的行前面加上块 ID，用来给出上下文。
+- `diff` 复用已读取的 PR diff，保留与单元新版本行范围相交的完整片段（含旧代码、删除行和上下文），不额外请求 GitHub。片段可能包含相邻代码的改动；问题仍只判断指定的新版本块。只有删除行的片段按其在新文件中的相邻行定位；纯删除文件仍只展示，不单独创建判断单元。
 - `blocks` 让问题可以用路径直接引用某个块。官方建议用反引号写路径，并且尽量少绕弯子。
 - 项目约定写在 state 里，只发送一次，不在每个问题里重复。
 
@@ -291,7 +293,7 @@ M2 实测时，测试代码几乎全被判为支撑，hono 的测试文件 53 �
 - **语言和主题：** `InternationalizationProvider` 用 Astryx 自带的 `zh-CN` 语言包（相对时间显示"1小时前"、"昨天"）；主题跟随系统明暗。
 - **路由：** 页面放在 URL hash 里（`#/` 首页、`#/repos` 全部仓库、`#/r/owner/repo`、`#/r/owner/repo/pull/N`；设置不是页面，是浮在当前页面上的弹窗），所以侧边栏和面包屑都是真正的链接，鼠标侧键和 Alt+←/→ 可以前进后退，窗口标题跟着页面变。
 - **首页和列表页：** 首页只有一个搜索框（`Typeahead`：粘贴 PR 链接直接审阅，输入 owner/repo 打开仓库，其他文字匹配自己的仓库），背景是缓慢流动的靛蓝抖动点阵，搜索框有一圈流动光边，标题用像素字体 Departure Mono。这两层动效用 [Paper Shaders](https://shaders.paper.design)（WebGL），颜色在运行时从 Astryx 色板变量取。全部仓库页有快速访问卡片、按最近推送分组的列表和按 `/` 聚焦的筛选框；PR 列表页把请求你审阅的 PR 放在最上面，每行有状态图标、彩色的增删行数，在 Yolk 里审过的 PR 显示核心行数（审阅完成时记在本机）。
-- **Astryx 没有的只自己写：** diff 行、三色、折叠行和悬停卡片仍然是自己的组件，但颜色全部取 Astryx 的色板变量（核心 `yellow`、防御 `blue`、支撑 `gray`、测试 `green`、删除 `red`），明暗两套自动切换。整块的背景比标签淡：测试代码最淡，免得大段测试抢眼。
+- **Astryx 没有的只自己写：** diff 行、三色、折叠行和悬停卡片仍然是自己的组件，但颜色全部取 Astryx 的色板变量（数据可视化色板）：核心琥珀（蛋黄，`data-yellow`）、防御靛蓝（与首页点阵同色，`data-categorical-indigo`）、支撑中灰（`data-gray`）、测试青绿（`data-teal`，跟新增行的绿色分开），删除用 `red`，明暗两套自动切换。分类主要靠每行左侧的竖条，行底色只混入一点点分类色（核心 12%、防御 10%、测试 7%，支撑不上色），图例也用同样的竖条。
 - **给 agent 用的 CLI：** `npx astryx build "<想做的页面>"` 推荐模板和组件，`npx astryx --dense component <名字>` 查组件属性，写界面前先查，不要猜 API。
 
 ### 选仓库
