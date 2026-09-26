@@ -321,6 +321,15 @@ section.file {
   flex-shrink: 0;
   margin-top: 3px;
 }
+.explanation-subject {
+  display: block;
+  font-weight: 500;
+}
+.explanation-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
 .explanation:not(:empty) {
   padding-top: var(--spacing-2);
   border-top: var(--border-width) solid var(--color-border);

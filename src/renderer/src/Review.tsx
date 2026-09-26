@@ -113,27 +113,28 @@ export function Review({ repo, number }: { repo: string; number: number }) {
     setHover((current) => (current?.file === next?.file && current?.block === next?.block ? current : next))
   }, [])
 
-  // Resting 400ms on a block asks the general model; the main process caches the answers.
-  const hoverKey = hover ? `${hover.file}:${hover.block}:${states[hover.file]?.get(hover.block)?.cut ?? false}` : undefined
+  // Explanations are per judgment unit (a function, or top-level changes) and only asked for on request: E or a click
+  // on the code. Hovering any block of the unit shows the same answer; the main process caches them too.
+  const hoverUnit = hover ? states[hover.file]?.get(hover.block)?.unit : undefined
+  const unitKey = hover && hoverUnit ? `${hover.file}:${hoverUnit}` : undefined
+  const requestExplanation = useCallback(() => {
+    if (!hover || !hoverUnit || !unitKey || !llmReady) return
+    const current = explanations[unitKey]
+    if (current && current.state !== 'error') return
+    setExplanations((all) => ({ ...all, [unitKey]: { state: 'loading' } }))
+    const reviewId = reviewIdRef.current
+    window.yolk.explainUnit(reviewId, hover.file, hoverUnit).then(
+      (text) => reviewIdRef.current === reviewId && setExplanations((all) => ({ ...all, [unitKey]: { state: 'done', text } })),
+      (e) => reviewIdRef.current === reviewId && setExplanations((all) => ({ ...all, [unitKey]: { state: 'error', text: errorMessage(e) } })),
+    )
+  }, [hover, hoverUnit, unitKey, llmReady, explanations])
   useEffect(() => {
-    if (!hover || !hoverKey || !llmReady) return
-    let active = true
-    const timer = setTimeout(() => {
-      setExplanations((all) => (all[hoverKey] && all[hoverKey].state !== 'error' ? all : { ...all, [hoverKey]: { state: 'loading' } }))
-      window.yolk.explainBlock(reviewIdRef.current, hover.file, hover.block).then(
-        (text) => {
-          if (active) setExplanations((all) => ({ ...all, [hoverKey]: { state: 'done', text } }))
-        },
-        (e) => {
-          if (active) setExplanations((all) => ({ ...all, [hoverKey]: { state: 'error', text: errorMessage(e) } }))
-        },
-      )
-    }, 400)
-    return () => {
-      active = false
-      clearTimeout(timer)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'e' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target)) requestExplanation()
     }
-  }, [hoverKey, llmReady])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [requestExplanation])
 
   // C toggles "core only" anywhere on the page except while typing.
   useEffect(() => {
@@ -272,7 +273,12 @@ export function Review({ repo, number }: { repo: string; number: number }) {
         }
         content={
           <LayoutContent padding={0}>
-            <div className="files" onMouseLeave={() => onHover(undefined)}>
+            <div
+              className="files"
+              onMouseLeave={() => onHover(undefined)}
+              // A plain click on code asks for its explanation; a click that ends a text selection does not.
+              onClick={() => window.getSelection()?.isCollapsed !== false && requestExplanation()}
+            >
               {files.map((file, i) => (
                 <DiffFile
                   key={file.diff.path}
@@ -298,7 +304,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
           judgment={judgments[hover.file]?.[hover.block]}
           error={unitErrors[hover.file]?.[states[hover.file].get(hover.block)?.unit ?? ''] ?? judgmentError}
           llmReady={llmReady}
-          explanation={hoverKey ? explanations[hoverKey] : undefined}
+          explanation={unitKey ? explanations[unitKey] : undefined}
         />
       )}
       <Dialog isOpen={showPolicy} onOpenChange={setShowPolicy} width={640}>

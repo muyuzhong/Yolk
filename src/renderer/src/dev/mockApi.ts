@@ -85,9 +85,13 @@ export async function mockApi(): Promise<YolkApi> {
       return { ...structuredClone(review.start), policy, policySource: repos[repo] ? 'repo' : fallback ? 'default' : null }
     },
     cancelReview: (reviewId) => cancelled.add(reviewId),
-    explainBlock: async (_reviewId, fileIndex, blockId) => {
-      await sleep(400)
-      return `（mock）第 ${fileIndex} 个文件的 ${blockId} 块：这里是模型的一段解释，用来检查 tooltip 的排版和长度。`
+    explainUnit: async (_reviewId, fileIndex, unitId) => {
+      await sleep(600)
+      return [
+        `（mock）第 ${fileIndex} 个文件的 ${unitId}：先用一两句说这段代码整体在做什么，用来检查悬停卡片的排版。`,
+        '第 12–15 行是核心：这里会写核心代码在做的事。',
+        '第 18 行是防御：这里会写它在防什么错误。',
+      ].join('\n')
     },
     onReviewProgress: (listener) => {
       listeners.add(listener)

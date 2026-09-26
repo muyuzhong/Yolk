@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import type { Block, Unit } from './chunk'
+import type { Role } from './judgment'
 
 /** Any OpenAI-compatible chat completions endpoint (DESIGN.md §7.2). */
 export interface LlmConfig {
@@ -9,33 +10,53 @@ export interface LlmConfig {
   model: string
 }
 
+/** One block of the unit as the review shows it: its judged role (null until judged) and whether it has ✂. */
+export interface ExplainedBlock {
+  block: Block
+  role: Role | 'test' | null
+  cut: boolean
+}
+
 export interface ExplainInput {
   pr: { title: string }
   path: string
   /** Lines of the new version of the file. */
   source: string[]
   unit: Unit
-  block: Block
-  /** The project convention; passed only when Jev suggests removing the block (✂). */
+  blocks: ExplainedBlock[]
+  /** The project convention; passed only when some block in the unit has ✂. */
   policy: string | null
 }
 
-const SYSTEM =
-  '你在帮助审阅者读懂一个 PR 里的代码块。用中文写 2 到 4 句话，说明这段代码做什么、为什么出现在这里。' +
-  '只解释，不评价写得好不好，不给修改建议，不复述代码，不用 Markdown。'
-const SYSTEM_CUT = '项目约定可能认为这段代码现在不需要：最后用一句话说明约定为什么可能不需要它。'
+const TAG: Record<Role | 'test', string> = { core: '核心', defense: '防御', support: '支撑', test: '测试' }
 
-/** The block's surrounding unit with the block's lines marked `>>`, plus the convention when it matters. */
-export function explainMessages({ pr, path, source, unit, block, policy }: ExplainInput): ChatCompletionMessageParam[] {
-  const marked = new Set(block.lines)
+const SYSTEM =
+  '你在帮助审阅者读懂 PR 里的一段代码：一个函数，或一段顶层改动。' +
+  '代码每行前面是行号和这一行的分类：核心是 PR 要做的事；防御只在出错时起作用；支撑不改变行为，比如类型、导入、日志；' +
+  '测试是测试代码；分类为空表示这行没有改动或还没判断。' +
+  '用中文回答，分两部分：先用一到两句话说明这段代码整体在做什么；再挑关键的几处说明，比如核心在做什么、防御在防什么，提到代码时写行号（如「第 12–15 行」）。' +
+  '总共不超过 6 句。只解释，不评价写得好不好，不给修改建议，不复述代码，不用 Markdown，可以分行。'
+const SYSTEM_CUT = '分类后面带 ✂ 的行，项目约定可能认为现在不需要：最后用一句话说明约定为什么可能不需要它们。'
+
+/** The whole unit with each line's number and category, plus the convention when some block has ✂. */
+export function explainMessages({ pr, path, source, unit, blocks, policy }: ExplainInput): ChatCompletionMessageParam[] {
+  const tags = new Map<number, string>()
+  for (const { block, role, cut } of blocks) {
+    const tag = (role ? TAG[role] : '') + (cut ? ' ✂' : '')
+    for (const line of block.lines) tags.set(line, tag)
+  }
+  const width = String(unit.end).length
   const code = source
     .slice(unit.start - 1, unit.end)
-    .map((text, i) => (marked.has(unit.start + i) ? '>> ' : '   ') + text)
+    .map((text, i) => {
+      const line = unit.start + i
+      return `${String(line).padStart(width)} ${(tags.get(line) ?? '').padEnd(4, '　')}| ${text}`
+    })
     .join('\n')
   const user = [
     `PR：${pr.title}`,
     `文件：${path}`,
-    '所在代码（行首是 >> 的是要解释的代码块）：',
+    unit.kind === 'function' ? `代码：函数 ${unit.name}` : '代码：顶层改动',
     code,
     ...(policy ? ['项目约定：', policy] : []),
   ].join('\n\n')

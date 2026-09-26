@@ -24,8 +24,9 @@ Jev judgments need a TypeSafe key in the environment. On this machine it lives i
 ```
 
 Hover explanations need an OpenAI-compatible model: `OPENAI_BASE_URL`, `OPENAI_API_KEY` and `OPENAI_MODEL` in the
-environment (the throwaway profile has no settings). Without a real model, run the bundled mock. It replies with
-the lines the prompt marked `>>`, so you can check the right block was sent:
+environment (the throwaway profile has no settings). Explanations are per judgment unit (a function, or top-level
+changes) and only on request (E, or a click on the code). Without a real model, run the bundled mock. It replies with
+the unit's name and its line counts by category, so you can check the right unit was sent:
 
 ```bash
 node .claude/skills/run-yolk/mock-llm.mjs 8787 > /tmp/yolk-mock-llm.log 2>&1 &
@@ -79,8 +80,8 @@ quit
 EOF
 ```
 
-Hover explanations against the mock. Hovering the same block again is served from the main-process cache, so
-the mock log shows one request per block:
+Explanations against the mock. Asking again for the same unit is answered from the renderer and the main-process
+cache, so the mock log shows one request per unit:
 
 ```bash
 . ~/.config/typesafe/env && OPENAI_BASE_URL=http://127.0.0.1:8787/v1 OPENAI_API_KEY=mock OPENAI_MODEL=mock-model \
@@ -130,7 +131,7 @@ profile in `/tmp/yolk-shots/userdata`, so `~/.config/yolk` is never touched.
 | `files` | file list with per-category line counts (核心 / 防御 / 支撑 / 测试) |
 | `file <n\|last>` | scroll file n (0-based) into view |
 | `hover-block <core\|defense\|support\|test\|pending>` | hover the first line of that category, print the tooltip |
-| `explain <category>` | hover like `hover-block`, wait for the general model's explanation, print it with the block id |
+| `explain <category>` | hover like `hover-block`, press E, wait for the general model's explanation of that block's unit and print it |
 | `core-only` | toggle 只看核心 with its keyboard shortcut C, print how many fold rows exist |
 | `theme <light\|dark\|system>` | force the color scheme (Electron nativeTheme + Playwright media emulation) |
 | `home` / `repos` | navigate by setting the URL hash (`#/`, `#/repos`); pages are hash routes |

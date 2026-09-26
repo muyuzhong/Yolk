@@ -1,4 +1,5 @@
 import { Icon } from '@astryxdesign/core/Icon'
+import { Kbd } from '@astryxdesign/core/Kbd'
 import { Spinner } from '@astryxdesign/core/Spinner'
 import { Sparkles } from 'lucide-react'
 import type { FileResult } from '../../core/analyze'
@@ -8,7 +9,7 @@ import { LABEL } from './labels'
 import type { BlockState } from './rows'
 
 const ROLES: Role[] = ['core', 'defense', 'support']
-const WIDTH = 380
+const WIDTH = 420
 
 export type Explanation = { state: 'loading' } | { state: 'done' | 'error'; text: string }
 
@@ -24,6 +25,8 @@ interface Props {
 
 export function Tooltip({ hover, file, state, judgment, error, llmReady, explanation }: Props) {
   const block = file.chunks?.blocks.find((b) => b.id === hover.block)
+  const unit = block && file.chunks?.units.find((u) => u.id === block.unit)
+  const unitName = unit ? (unit.kind === 'function' ? `函数 ${unit.name}` : '这段顶层改动') : '这段代码'
   const left = Math.min(hover.x + 16, window.innerWidth - WIDTH - 16)
   // Open upwards in the lower half so a long explanation stays on screen.
   const vertical = hover.y < window.innerHeight * 0.55 ? { top: hover.y + 16 } : { bottom: window.innerHeight - hover.y + 16 }
@@ -60,24 +63,33 @@ export function Tooltip({ hover, file, state, judgment, error, llmReady, explana
           )}
         </>
       )}
-      <div className="explanation">
-        {!llmReady && <span className="muted">在设置里配置通用模型后，这里会显示中文解释。</span>}
-        {explanation?.state === 'loading' && (
-          <span className="muted explanation-loading">
-            <Spinner size="sm" /> 正在生成解释…
-          </span>
-        )}
-        {explanation?.state === 'done' && (
-          <span className="explanation-text">
-            <Icon icon={Sparkles} size="sm" color="accent" />
-            <span>{explanation.text}</span>
-          </span>
-        )}
-        {explanation?.state === 'error' && <span className="tooltip-error">解释失败：{explanation.text}</span>}
-      </div>
-      {block && (
-        <div className="muted small">
-          {block.id} · {block.nodeType} · {block.unit}
+      {unit && (
+        <div className="explanation">
+          {!llmReady && <span className="muted">在设置里配置通用模型后，可以让它解释{unitName}。</span>}
+          {llmReady && !explanation && (
+            <span className="muted explanation-hint">
+              点击代码或按 <Kbd keys="e" /> 解释{unitName}
+            </span>
+          )}
+          {explanation?.state === 'loading' && (
+            <span className="muted explanation-loading">
+              <Spinner size="sm" /> 正在解释{unitName}…
+            </span>
+          )}
+          {explanation?.state === 'done' && (
+            <span className="explanation-text">
+              <Icon icon={Sparkles} size="sm" color="accent" />
+              <span>
+                <span className="explanation-subject">关于{unitName}</span>
+                {explanation.text}
+              </span>
+            </span>
+          )}
+          {explanation?.state === 'error' && (
+            <span className="tooltip-error">
+              解释失败：{explanation.text}（再按 E 重试）
+            </span>
+          )}
         </div>
       )}
     </div>
