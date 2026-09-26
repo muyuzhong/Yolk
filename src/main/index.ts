@@ -2,7 +2,7 @@ import { TypeSafeClient } from '@typesafe-ai/sdk'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, type WebContents } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { chunkPullRequest, judgeFiles } from '../core/analyze'
-import { suggestsRemoval, type JudgingSettings } from '../core/judgment'
+import { suggestsRemoval, type JudgingUpdate } from '../core/judgment'
 import { explain, explainMessages } from '../core/llm'
 import { currentUser, listPullRequests, listRepositories, repoKey, type PullRequestState } from '../core/sources/gh'
 import type { ReviewProgress, ReviewStart, SettingsUpdate } from '../shared/api'
@@ -126,7 +126,7 @@ app.whenReady().then(() => {
     explanations.clear()
     return settings
   })
-  ipcMain.handle('settings:judging', async (_event, judging: JudgingSettings | null) => {
+  ipcMain.handle('settings:judging', async (_event, judging: JudgingUpdate | null) => {
     const settings = await saveJudging(judging)
     explanations.clear()
     return settings
