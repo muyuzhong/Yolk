@@ -1,4 +1,3 @@
-import { Badge } from '@astryxdesign/core/Badge'
 import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
 import { Card } from '@astryxdesign/core/Card'
@@ -7,6 +6,7 @@ import { HStack } from '@astryxdesign/core/HStack'
 import { Layout, LayoutContent } from '@astryxdesign/core/Layout'
 import { Text } from '@astryxdesign/core/Text'
 import { TextInput } from '@astryxdesign/core/TextInput'
+import { Token } from '@astryxdesign/core/Token'
 import { useToast } from '@astryxdesign/core/Toast'
 import { VStack } from '@astryxdesign/core/VStack'
 import { KeyRound, Link2 } from 'lucide-react'
@@ -74,7 +74,7 @@ export function Settings() {
                     <Heading level={2}>Jev</Heading>
                     <Text type="supporting">判断每个代码块是核心、防御还是支撑</Text>
                     <span className="spacer" />
-                    <Badge variant={view.jev.hasKey ? 'success' : 'neutral'} label={view.jev.hasKey ? '已保存 Key' : '使用环境变量'} />
+                    <Token size="sm" color={view.jev.hasKey ? 'green' : 'gray'} label={view.jev.hasKey ? '已保存 Key' : '使用环境变量'} />
                   </HStack>
                   <TextInput
                     type="password"
@@ -105,7 +105,7 @@ export function Settings() {
                     <Heading level={2}>通用模型</Heading>
                     <Text type="supporting">生成悬停时的中文解释</Text>
                     <span className="spacer" />
-                    <Badge variant={view.llm.ready ? 'success' : 'warning'} label={view.llm.ready ? '已可用' : '未配置'} />
+                    <Token size="sm" color={view.llm.ready ? 'green' : 'yellow'} label={view.llm.ready ? '已可用' : '未配置'} />
                   </HStack>
                   <TextInput
                     label="Base URL"
