@@ -3,7 +3,7 @@
 import { readFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { judgePullRequest, type FileResult } from '../src/core/analyze'
-import { isUnsure, suggestsRemoval, type Role } from '../src/core/jev'
+import { isUnsure, suggestsRemoval, type Role } from '../src/core/judgment'
 import { blockIndex, color, dim, printHunks } from './print'
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { convention: { type: 'string' } } })

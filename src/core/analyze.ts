@@ -1,7 +1,8 @@
 import { TypeSafeClient } from '@typesafe-ai/sdk'
 import { chunkFile, type Chunks, type HunkRange } from './chunk'
 import { parseDiff, type FileDiff } from './diff'
-import { judgeUnit, type Judgment } from './jev'
+import { judgeUnit } from './jev'
+import type { Judgment } from './judgment'
 import { languageFor } from './languages'
 import { getConvention, getFileAt, getPullRequest, getPullRequestDiff, type PullRequest } from './sources/gh'
 import { inlineTestRanges, isTestPath } from './testcode'
@@ -47,33 +48,52 @@ export async function chunkPullRequest(url: string): Promise<PullRequestChunks> 
   return { pr, files }
 }
 
-export interface PullRequestJudgments extends PullRequestChunks {
-  policy: string | null
-  model: string
-  inputTokens: number
+/** One judged (or failed) unit, reported as soon as its Jev request returns. */
+export interface UnitResult {
+  fileIndex: number
+  unitId: string
+  judgments?: Record<string, Judgment>
+  error?: string
 }
 
-/** Chunks the PR and asks Jev about every judgment unit, at most 8 requests at a time. */
-export async function judgePullRequest(url: string, options: { policy?: string } = {}): Promise<PullRequestJudgments> {
-  const { pr, files } = await chunkPullRequest(url)
-  const policy = options.policy ?? (await getConvention(pr))
-  const client = new TypeSafeClient()
+export interface JudgeOptions {
+  policy: string | null
+  client: TypeSafeClient
+  signal?: AbortSignal
+  onUnit?: (result: UnitResult) => void
+}
+
+/** Asks Jev about every judgment unit, at most 8 requests at a time; results are also merged into `files`. */
+export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy, client, onUnit, signal }: JudgeOptions) {
   let model = ''
   let inputTokens = 0
-
-  const tasks = files.flatMap((file) => file.chunks?.units.map((unit) => ({ file, unit })) ?? [])
-  await mapLimit(tasks, 8, async ({ file, unit }) => {
+  const tasks = files.flatMap((file, fileIndex) => file.chunks?.units.map((unit) => ({ file, fileIndex, unit })) ?? [])
+  await mapLimit(tasks, 8, async ({ file, fileIndex, unit }) => {
+    if (signal?.aborted) return
     const blocks = file.chunks!.blocks.filter((b) => b.unit === unit.id && !file.testBlocks!.includes(b.id))
     if (!blocks.length) return
     try {
-      const result = await judgeUnit(client, { pr, policy, path: file.diff.path, source: file.source!, unit, blocks })
+      const result = await judgeUnit(client, { pr, policy, path: file.diff.path, source: file.source!, unit, blocks }, signal)
+      if (signal?.aborted) return
       file.judgments = { ...file.judgments, ...result.judgments }
       model = result.model
       inputTokens += result.inputTokens
+      onUnit?.({ fileIndex, unitId: unit.id, judgments: result.judgments })
     } catch (error) {
-      file.unitErrors = { ...file.unitErrors, [unit.id]: error instanceof Error ? error.message : String(error) }
+      if (signal?.aborted) return
+      const message = error instanceof Error ? error.message : String(error)
+      file.unitErrors = { ...file.unitErrors, [unit.id]: message }
+      onUnit?.({ fileIndex, unitId: unit.id, error: message })
     }
   })
+  return { model, inputTokens }
+}
+
+/** Chunks and judges a PR in one go, for the terminal scripts. The Jev key comes from TYPESAFE_API_KEY. */
+export async function judgePullRequest(url: string, options: { policy?: string } = {}) {
+  const { pr, files } = await chunkPullRequest(url)
+  const policy = options.policy ?? (await getConvention(pr))
+  const { model, inputTokens } = await judgeFiles(pr, files, { policy, client: new TypeSafeClient() })
   return { pr, files, policy, model, inputTokens }
 }
 
