@@ -2,6 +2,7 @@ import { AppShell } from '@astryxdesign/core/AppShell'
 import { InternationalizationProvider } from '@astryxdesign/core/i18n'
 import zhCN from '@astryxdesign/core/locales/zh-CN.json'
 import { BreadcrumbItem, Breadcrumbs } from '@astryxdesign/core/Breadcrumbs'
+import { HStack } from '@astryxdesign/core/HStack'
 import { Icon } from '@astryxdesign/core/Icon'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { NavIcon } from '@astryxdesign/core/NavIcon'
@@ -9,14 +10,14 @@ import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav
 import { Theme } from '@astryxdesign/core/theme'
 import { TopNav, TopNavHeading } from '@astryxdesign/core/TopNav'
 import { neutralTheme } from '@astryxdesign/theme-neutral/built'
-import { EggFried, ExternalLink, FolderGit2, LayoutGrid, Pin, PinOff, Search, Settings as SettingsIcon } from 'lucide-react'
+import { ArrowLeft, EggFried, ExternalLink, FolderGit2, LayoutGrid, Pin, PinOff, Search, Settings as SettingsIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Landing } from './Landing'
 import { rememberRepository, setPinned, useRepositoryShortcuts } from './recent'
 import { Repository } from './Repository'
 import { RepositoryList } from './RepositoryList'
 import { Review } from './Review'
-import { href, pullRequestUrl, repositoryUrl, useRoute, type Route } from './route'
+import { goBack, href, parseRoute, pullRequestUrl, repositoryUrl, useRoute, type Route } from './route'
 import { SettingsDialog } from './Settings'
 import { openSettings, useSettingsDialog } from './settingsDialog'
 
@@ -39,11 +40,11 @@ export function App() {
   // Pages are hash routes, so mouse back/forward buttons and Alt+←/→ walk the history like a browser.
   useEffect(() => {
     const onMouse = (e: MouseEvent) => {
-      if (e.button === 3) history.back()
+      if (e.button === 3) goBack(parseRoute(location.hash))
       if (e.button === 4) history.forward()
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey && e.key === 'ArrowLeft') history.back()
+      if (e.altKey && e.key === 'ArrowLeft') goBack(parseRoute(location.hash))
       if (e.altKey && e.key === 'ArrowRight') history.forward()
     }
     window.addEventListener('mouseup', onMouse)
@@ -134,11 +135,14 @@ function TopBar({ route }: { route: Route }) {
       heading={<TopNavHeading heading="Yolk" headingHref={href({ page: 'home' })} logo={<NavIcon icon={<Icon icon={EggFried} size="sm" />} />} />}
       startContent={
         route.page !== 'home' && (
-          <Breadcrumbs>
-            <BreadcrumbItem href={href({ page: 'repos' })}>全部仓库</BreadcrumbItem>
-            {(route.page === 'repo' || route.page === 'review') && <BreadcrumbItem href={href({ page: 'repo', repo: route.repo })}>{route.repo}</BreadcrumbItem>}
-            {route.page === 'review' && <BreadcrumbItem>#{route.number}</BreadcrumbItem>}
-          </Breadcrumbs>
+          <HStack gap={1} align="center">
+            <IconButton variant="ghost" size="sm" label="返回" tooltip="返回（Alt+←）" icon={<Icon icon={ArrowLeft} size="sm" />} onClick={() => goBack(route)} />
+            <Breadcrumbs>
+              <BreadcrumbItem href={href({ page: 'repos' })}>全部仓库</BreadcrumbItem>
+              {(route.page === 'repo' || route.page === 'review') && <BreadcrumbItem href={href({ page: 'repo', repo: route.repo })}>{route.repo}</BreadcrumbItem>}
+              {route.page === 'review' && <BreadcrumbItem>#{route.number}</BreadcrumbItem>}
+            </Breadcrumbs>
+          </HStack>
         )
       }
       endContent={
