@@ -305,14 +305,50 @@ section.file {
   padding: var(--spacing-1) var(--spacing-2);
 }
 /*
- * Selected lines: the whole row takes a light indigo wash (the category bar stays), instead of the browser's ragged
- * text highlight, which is hidden in the diff.
+ * Selecting code: while dragging, the browser's own text highlight, in indigo instead of its default blue. Once the
+ * selection ends, the selected lines are bracketed like [ … ]: a bar where the code starts and one at the end of the
+ * row, with ticks at the first and last line. The same marker can later show human annotations.
  */
 .diff ::selection {
-  background: transparent;
+  background: color-mix(in srgb, var(--color-data-categorical-indigo) 30%, transparent);
 }
-.diff .line[data-selected] {
-  background: color-mix(in srgb, var(--color-data-categorical-indigo) 16%, transparent);
+.line {
+  position: relative;
+}
+.line[data-selected] > code {
+  position: relative;
+}
+.line[data-selected] > code::before,
+.line[data-selected]::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--spacing-1-5);
+  border-color: var(--color-data-categorical-indigo);
+  border-style: solid;
+  border-width: 0;
+  pointer-events: none;
+}
+.line[data-selected] > code::before {
+  left: 0;
+  border-left-width: calc(var(--border-width) * 2);
+}
+.line[data-selected]::after {
+  right: 0;
+  border-right-width: calc(var(--border-width) * 2);
+}
+.line[data-selected='first'] > code::before,
+.line[data-selected='first']::after,
+.line[data-selected='only'] > code::before,
+.line[data-selected='only']::after {
+  border-top-width: calc(var(--border-width) * 2);
+}
+.line[data-selected='last'] > code::before,
+.line[data-selected='last']::after,
+.line[data-selected='only'] > code::before,
+.line[data-selected='only']::after {
+  border-bottom-width: calc(var(--border-width) * 2);
 }
 .selection-card {
   position: fixed;

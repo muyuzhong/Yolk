@@ -50,12 +50,16 @@ export function readSelection(): DiffSelection | null {
 let marked: HTMLElement[] = []
 
 /**
- * Highlights whole selected lines in place of the browser's ragged text highlight. It sets a data attribute React does
- * not manage, so it survives the lines re-rendering for hover.
+ * Brackets a finished selection: a bar down each side of the selected lines, with ticks at the first and last line,
+ * like [ … ]. It sets a data attribute React does not manage, so it survives the lines re-rendering for hover.
  */
 export function markLines(elements: HTMLElement[]) {
   for (const el of marked) if (!elements.includes(el)) delete el.dataset.selected
-  for (const el of elements) el.dataset.selected = ''
+  elements.forEach((el, i) => {
+    const first = i === 0
+    const last = i === elements.length - 1
+    el.dataset.selected = first && last ? 'only' : first ? 'first' : last ? 'last' : 'middle'
+  })
   marked = elements
 }
 

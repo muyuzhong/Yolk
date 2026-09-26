@@ -171,24 +171,18 @@ export function Review({ repo, number }: { repo: string; number: number }) {
     })
   }, [explanations])
 
-  // Whole selected lines are highlighted live while dragging, and stay highlighted while their action or answer is up.
-  const selectionRef = useRef(selection)
-  selectionRef.current = selection
+  // While dragging, the browser's own selection shows (restyled); once it ends, the selected lines are bracketed and
+  // stay bracketed while their action or answer is up.
   useEffect(() => markLines(selection?.elements ?? []), [selection])
+  useEffect(() => () => markLines([]), [])
+  // No hover card while a mouse button is down in the diff: it would sit on the lines being selected.
+  const [isDragging, setIsDragging] = useState(false)
   useEffect(() => {
-    let frame = 0
-    const onChange = () =>
-      (frame ||= requestAnimationFrame(() => {
-        frame = 0
-        markLines(readSelection()?.elements ?? selectionRef.current?.elements ?? [])
-      }))
-    document.addEventListener('selectionchange', onChange)
-    return () => {
-      document.removeEventListener('selectionchange', onChange)
-      cancelAnimationFrame(frame)
-      markLines([])
-    }
-  }, [])
+    if (!isDragging) return
+    const onUp = () => setIsDragging(false)
+    window.addEventListener('mouseup', onUp)
+    return () => window.removeEventListener('mouseup', onUp)
+  }, [isDragging])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -297,6 +291,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
             <div
               className="files"
               onMouseLeave={() => onHover(undefined)}
+              onMouseDown={(e) => e.button === 0 && setIsDragging(true)}
               onMouseUp={onSelectionEnd}
               // A plain click on code asks for its explanation; a click that ends a text selection does not.
               onClick={() => window.getSelection()?.isCollapsed !== false && requestExplanation()}
@@ -327,7 +322,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
           onClose={closeSelection}
         />
       )}
-      {hover && hovered && !selection && (
+      {hover && hovered && !selection && !isDragging && (
         <Tooltip
           hover={hover}
           file={hovered}
