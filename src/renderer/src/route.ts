@@ -48,6 +48,49 @@ export function repositoryUrl(repo: string): string {
 
 export const pullRequestUrl = (repo: string, number: number) => `${repositoryUrl(repo)}/pull/${number}`
 
+/** One level up: where "back" goes when this session has no earlier page to return to. */
+export function parentOf(route: Route): Route | undefined {
+  switch (route.page) {
+    case 'review':
+      return { page: 'repo', repo: route.repo }
+    case 'repo':
+      return { page: 'repos' }
+    case 'repos':
+      return { page: 'home' }
+    case 'home':
+      return undefined
+  }
+}
+
+// Each history entry this session created is stamped with its depth, so "back" can tell whether there is an earlier
+// Yolk page to return to (history.length also counts pages from before the app loaded).
+let depth = 0
+/** Set while going up a level in place, so the entry it replaces keeps the current depth. */
+let replacing = false
+if (typeof window !== 'undefined') {
+  const initial = (history.state as { yolkDepth?: number } | null)?.yolkDepth
+  if (initial === undefined) history.replaceState({ yolkDepth: 0 }, '')
+  else depth = initial
+  window.addEventListener('hashchange', () => {
+    const stamped = (history.state as { yolkDepth?: number } | null)?.yolkDepth
+    if (stamped === undefined) history.replaceState({ yolkDepth: replacing ? depth : ++depth }, '')
+    else depth = stamped
+    replacing = false
+  })
+}
+
+/**
+ * Back to the previous page if this session has one, otherwise one level up. Going up replaces the current entry,
+ * so the next "back" keeps climbing instead of returning to the page just left.
+ */
+export function goBack(route: Route) {
+  if (depth > 0) return history.back()
+  const parent = parentOf(route)
+  if (!parent) return
+  replacing = true
+  location.replace(href(parent))
+}
+
 const subscribe = (onChange: () => void) => {
   window.addEventListener('hashchange', onChange)
   return () => window.removeEventListener('hashchange', onChange)

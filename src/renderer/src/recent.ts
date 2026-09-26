@@ -1,5 +1,6 @@
 // Recently opened and pinned repositories, per machine, most recent first. Pinned ones never age out.
 import { useSyncExternalStore } from 'react'
+import { createStore } from './store'
 
 const RECENT = 'yolk.recentRepositories'
 const PINNED = 'yolk.pinnedRepositories'
@@ -12,28 +13,18 @@ export interface RepositoryShortcuts {
 }
 
 const read = (key: string): string[] => JSON.parse(localStorage.getItem(key) ?? '[]')
-const listeners = new Set<() => void>()
-let snapshot: RepositoryShortcuts | undefined
+const store = createStore<RepositoryShortcuts>(() => {
+  const pinned = read(PINNED)
+  return { pinned, recent: read(RECENT).filter((r) => !pinned.includes(r)) }
+})
 
 function write(key: string, repos: string[]) {
   localStorage.setItem(key, JSON.stringify(repos))
-  snapshot = undefined
-  listeners.forEach((listener) => listener())
-}
-
-function shortcuts(): RepositoryShortcuts {
-  if (!snapshot) {
-    const pinned = read(PINNED)
-    snapshot = { pinned, recent: read(RECENT).filter((r) => !pinned.includes(r)) }
-  }
-  return snapshot
+  store.notify()
 }
 
 export function useRepositoryShortcuts(): RepositoryShortcuts {
-  return useSyncExternalStore((listener) => {
-    listeners.add(listener)
-    return () => listeners.delete(listener)
-  }, shortcuts)
+  return useSyncExternalStore(store.subscribe, store.getSnapshot)
 }
 
 export function rememberRepository(repo: string) {
