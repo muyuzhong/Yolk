@@ -1,11 +1,12 @@
 import { choice, noul, type ChoiceResponse, type NoulResponse, type Questions, type TypeSafeClient } from '@typesafe-ai/sdk'
 import type { Block, Unit } from './chunk'
+import { diffForRange, type FileDiff } from './diff'
 import { DEFAULT_ROLE_CRITERIA, type Judgment, type Role } from './judgment'
 
 export interface UnitInput {
   pr: { title: string; body: string }
   policy: string | null
-  path: string
+  diff: FileDiff
   /** Lines of the new version of the file. */
   source: string[]
   unit: Unit
@@ -16,7 +17,7 @@ export interface UnitInput {
 }
 
 /** One Jev request per unit: the unit's code with block markers as state, two questions per block. */
-export function buildRequest({ pr, policy, path, source, unit, blocks, roles = DEFAULT_ROLE_CRITERIA }: UnitInput) {
+export function buildRequest({ pr, policy, diff, source, unit, blocks, roles = DEFAULT_ROLE_CRITERIA }: UnitInput) {
   const marker = new Map<number, string>()
   for (const block of blocks) for (const line of block.lines) marker.set(line, `[${block.id}]`)
   const code = source
@@ -30,7 +31,7 @@ export function buildRequest({ pr, policy, path, source, unit, blocks, roles = D
   const questions: Questions = {}
   for (const block of blocks) {
     questions[`${block.id}_role`] = choice(
-      `What role does the code in \`blocks.${block.id}\` (marked [${block.id}] in \`code\`) play in this PR's change?`,
+      `What role does the code in \`blocks.${block.id}\` (marked [${block.id}] in the new-version \`code\`) play in this PR's change? Use \`diff\` for what changed (- old, + new). Classify only this block.`,
       roles,
     )
     if (policy) {
@@ -43,8 +44,9 @@ export function buildRequest({ pr, policy, path, source, unit, blocks, roles = D
   const state = {
     pr: { title: pr.title, description: pr.body },
     ...(policy ? { policy } : {}),
-    file: path,
+    file: diff.path,
     code,
+    diff: diffForRange(diff, unit.start, unit.end),
     blocks: Object.fromEntries(blocks.map((b) => [b.id, blockText(b)])),
   }
   return { state, questions }

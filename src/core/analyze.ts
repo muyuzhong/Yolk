@@ -75,7 +75,7 @@ export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy,
     const blocks = file.chunks!.blocks.filter((b) => b.unit === unit.id && !file.testBlocks!.includes(b.id))
     if (!blocks.length) return
     try {
-      const result = await judgeUnit(client, { pr, policy, path: file.diff.path, source: file.source!, unit, blocks, roles }, signal)
+      const result = await judgeUnit(client, { pr, policy, diff: file.diff, source: file.source!, unit, blocks, roles }, signal)
       if (signal?.aborted) return
       file.judgments = { ...file.judgments, ...result.judgments }
       model = result.model

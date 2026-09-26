@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseDiff } from '../src/core/diff'
+import { diffForRange, parseDiff } from '../src/core/diff'
 
 const DIFF = `diff --git a/src/a.ts b/src/a.ts
 index 1111111..2222222 100644
@@ -60,4 +60,12 @@ test('parses statuses, paths and line numbers', () => {
     ],
   )
   assert.deepEqual(files[1].hunks[0].lines.map((l) => l.newNo), [1, 2])
+})
+
+test('diff context keeps whole hunks for added files and deletions at a unit boundary', () => {
+  const files = parseDiff(DIFF)
+  assert.equal(diffForRange(files[1], 1, 2), '@@ -0,0 +1,2 @@\n+def f():\n+    pass')
+  assert.equal(diffForRange(files[0], 50, 60), '')
+  const [diff] = parseDiff('diff --git a/a.ts b/a.ts\n@@ -1 +0,0 @@\n-// old preamble\n')
+  assert.equal(diffForRange(diff, 1, 4), '@@ -1 +0,0 @@\n-// old preamble')
 })
