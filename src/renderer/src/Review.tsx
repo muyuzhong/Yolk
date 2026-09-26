@@ -223,23 +223,51 @@ export function Review({ repo, number }: { repo: string; number: number }) {
         }
         start={
           <LayoutPanel width={300} hasDivider label="文件" padding={2}>
-            <List density="compact" className="file-list">
-              {files.map((file, i) => {
-                const name = file.diff.path.split('/').pop()!
-                const dir = file.diff.path.slice(0, -name.length)
-                return (
-                  <ListItem
-                    key={file.diff.path}
-                    className="file-list-item"
-                    label={name}
-                    description={file.skipped ? `${dir}${dir ? ' · ' : ''}${file.skipped}` : dir || undefined}
-                    isSelected={i === activeFile}
-                    endContent={<FileCounts counts={counts[i]} />}
-                    onClick={() => document.getElementById(`file-${i}`)?.scrollIntoView({ block: 'start' })}
-                  />
-                )
-              })}
-            </List>
+            <VStack gap={4}>
+              {[
+                { key: 'judged', indexes: files.flatMap((f, i) => (f.skipped ? [] : [i])), header: undefined },
+                { key: 'skipped', indexes: files.flatMap((f, i) => (f.skipped ? [i] : [])), header: '只显示 diff' },
+              ].map(
+                ({ key, indexes, header }) =>
+                  indexes.length > 0 && (
+                    <List
+                      key={key}
+                      density="compact"
+                      className="file-list"
+                      header={
+                        header && (
+                          <Text type="supporting" weight="medium" className="file-list-header">
+                            {header}
+                          </Text>
+                        )
+                      }
+                    >
+                      {indexes.map((i) => {
+                        const file = files[i]
+                        const name = file.diff.path.split('/').pop()!
+                        const dir = file.diff.path.slice(0, -name.length)
+                        // The group says "diff only"; name the reason only when it is not the usual unsupported language.
+                        const reason = file.skipped && file.skipped !== '暂不支持的语言' ? file.skipped : ''
+                        return (
+                          <ListItem
+                            key={file.diff.path}
+                            className={`file-list-item${file.skipped ? ' is-skipped' : ''}`}
+                            label={name}
+                            description={[dir, reason].filter(Boolean).join(' · ') || undefined}
+                            isSelected={i === activeFile}
+                            endContent={!file.skipped && <FileCounts counts={counts[i]} />}
+                            onClick={(e) => {
+                              document.getElementById(`file-${i}`)?.scrollIntoView({ block: 'start' })
+                              // A mouse click should not leave a focus ring behind; keyboard focus keeps it.
+                              if (e.detail > 0) (e.currentTarget as HTMLElement).blur()
+                            }}
+                          />
+                        )
+                      })}
+                    </List>
+                  ),
+              )}
+            </VStack>
           </LayoutPanel>
         }
         content={
@@ -338,12 +366,12 @@ function JudgeStatus({ status, judged, total }: { status: Status; judged: number
 
 function FileCounts({ counts }: { counts: Partial<Record<Category, number>> }) {
   return (
-    <span className="file-counts">
+    <HStack gap={2} align="center" className="file-counts">
       {SHOWN.filter((c) => counts[c]).map((c) => (
-        <span key={c} className={`count cat-${c}`} title={`${LABEL[c]} ${counts[c]} 行`}>
+        <Text key={c} type="supporting" className={`legend-item cat-${c}`}>
           {counts[c]}
-        </span>
+        </Text>
       ))}
-    </span>
+    </HStack>
   )
 }

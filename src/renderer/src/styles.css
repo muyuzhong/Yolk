@@ -38,19 +38,16 @@
   color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
 }
-.file-counts {
-  display: inline-flex;
-  gap: 2px;
-}
-.file-counts .count {
-  min-width: 20px;
-  padding: 0 4px;
-  border-radius: var(--radius-inner);
-  background: var(--cbg);
-  color: var(--ct);
-  font-size: var(--font-size-sm);
+.file-counts .legend-item {
+  gap: var(--spacing-1);
   font-variant-numeric: tabular-nums;
-  text-align: center;
+}
+/* Files Yolk only shows as a plain diff: grouped under one header and quieter than the judged ones. */
+.file-list-header {
+  padding-inline: var(--spacing-2);
+}
+.file-list-item.is-skipped {
+  opacity: 0.6;
 }
 
 /* Repository page */
