@@ -1,5 +1,6 @@
 // Settings open as a card over whatever page is showing, not as a page of their own; any page can open them.
 import { useSyncExternalStore } from 'react'
+import { createStore } from './store'
 
 export interface SettingsDialogState {
   isOpen: boolean
@@ -8,22 +9,16 @@ export interface SettingsDialogState {
 }
 
 let state: SettingsDialogState = { isOpen: false }
-const listeners = new Set<() => void>()
+const store = createStore(() => state)
 
 function set(next: SettingsDialogState) {
   state = next
-  listeners.forEach((listener) => listener())
+  store.notify()
 }
 
 export const openSettings = (repo?: string) => set({ isOpen: true, repo })
 export const closeSettings = () => set({ isOpen: false })
 
 export function useSettingsDialog(): SettingsDialogState {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
-    },
-    () => state,
-  )
+  return useSyncExternalStore(store.subscribe, store.getSnapshot)
 }

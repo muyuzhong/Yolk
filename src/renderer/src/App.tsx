@@ -78,19 +78,12 @@ export function App() {
                 <SideNavItem label="首页" icon={Search} href={href({ page: 'home' })} isSelected={route.page === 'home'} />
                 <SideNavItem label="全部仓库" icon={LayoutGrid} href={href({ page: 'repos' })} isSelected={route.page === 'repos'} />
               </SideNavSection>
-              {pinned.length > 0 && (
-                <SideNavSection title="已固定">
-                  {pinned.map((repo) => (
-                    <RepositoryNavItem key={repo} repo={repo} route={route} isPinned />
-                  ))}
-                </SideNavSection>
-              )}
-              {recent.length > 0 && (
-                <SideNavSection title="最近打开">
-                  {recent.map((repo) => (
-                    <RepositoryNavItem key={repo} repo={repo} route={route} isPinned={false} />
-                  ))}
-                </SideNavSection>
+              {[{ title: '已固定', repos: pinned, isPinned: true }, { title: '最近打开', repos: recent, isPinned: false }].map(
+                ({ title, repos, isPinned }) => repos.length > 0 && (
+                  <SideNavSection key={title} title={title}>
+                    {repos.map((repo) => <RepositoryNavItem key={repo} repo={repo} route={route} isPinned={isPinned} />)}
+                  </SideNavSection>
+                ),
               )}
             </SideNav>
           }
