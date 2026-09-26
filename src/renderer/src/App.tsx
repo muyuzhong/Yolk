@@ -17,12 +17,12 @@ import { Repository } from './Repository'
 import { RepositoryList } from './RepositoryList'
 import { Review } from './Review'
 import { href, pullRequestUrl, repositoryUrl, useRoute, type Route } from './route'
-import { Settings } from './Settings'
+import { SettingsDialog } from './Settings'
+import { openSettings, useSettingsDialog } from './settingsDialog'
 
 const TITLE: Record<Route['page'], (route: Route) => string> = {
   home: () => '首页',
   repos: () => '全部仓库',
-  settings: () => '设置',
   repo: (route) => (route.page === 'repo' ? route.repo : ''),
   review: (route) => (route.page === 'review' ? `#${route.number} · ${route.repo}` : ''),
 }
@@ -34,6 +34,7 @@ export function App() {
   const [listNavCollapsed, setListNavCollapsed] = useState(false)
   const isReview = route.page === 'review'
   const { pinned, recent } = useRepositoryShortcuts()
+  const settings = useSettingsDialog()
 
   // Pages are hash routes, so mouse back/forward buttons and Alt+←/→ walk the history like a browser.
   useEffect(() => {
@@ -70,7 +71,7 @@ export function App() {
                 isCollapsed: isReview ? reviewNavCollapsed : listNavCollapsed,
                 onCollapsedChange: isReview ? setReviewNavCollapsed : setListNavCollapsed,
               }}
-              footer={<SideNavItem label="设置" icon={SettingsIcon} href={href({ page: 'settings' })} isSelected={route.page === 'settings'} />}
+              footer={<SideNavItem label="设置" icon={SettingsIcon} isSelected={settings.isOpen} onClick={() => openSettings()} />}
             >
               <SideNavSection title="导航" isHeaderHidden>
                 <SideNavItem label="首页" icon={Search} href={href({ page: 'home' })} isSelected={route.page === 'home'} />
@@ -97,8 +98,8 @@ export function App() {
           {route.page === 'repos' && <RepositoryList />}
           {route.page === 'repo' && <Repository key={route.repo} repo={route.repo} />}
           {route.page === 'review' && <Review key={`${route.repo}#${route.number}`} repo={route.repo} number={route.number} />}
-          {route.page === 'settings' && <Settings />}
         </AppShell>
+        <SettingsDialog />
       </Theme>
     </InternationalizationProvider>
   )
@@ -134,10 +135,9 @@ function TopBar({ route }: { route: Route }) {
       startContent={
         route.page !== 'home' && (
           <Breadcrumbs>
-            {route.page !== 'settings' && <BreadcrumbItem href={href({ page: 'repos' })}>全部仓库</BreadcrumbItem>}
+            <BreadcrumbItem href={href({ page: 'repos' })}>全部仓库</BreadcrumbItem>
             {(route.page === 'repo' || route.page === 'review') && <BreadcrumbItem href={href({ page: 'repo', repo: route.repo })}>{route.repo}</BreadcrumbItem>}
             {route.page === 'review' && <BreadcrumbItem>#{route.number}</BreadcrumbItem>}
-            {route.page === 'settings' && <BreadcrumbItem>设置</BreadcrumbItem>}
           </Breadcrumbs>
         )
       }

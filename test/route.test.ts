@@ -4,7 +4,7 @@ import { href, parseRoute, pullRequestUrl, repositoryUrl, type Route } from '../
 
 const routes: Route[] = [
   { page: 'home' },
-  { page: 'settings' },
+  { page: 'repos' },
   { page: 'repo', repo: 'honojs/hono' },
   { page: 'repo', repo: 'git.corp.example/team/app' },
   { page: 'review', repo: 'honojs/hono', number: 5377 },

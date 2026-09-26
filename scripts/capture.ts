@@ -4,7 +4,7 @@
 import { TypeSafeClient } from '@typesafe-ai/sdk'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { chunkPullRequest, judgeFiles, type UnitResult } from '../src/core/analyze'
-import { currentUser, getConvention, listPullRequests, listRepositories, parsePrUrl } from '../src/core/sources/gh'
+import { currentUser, listPullRequests, listRepositories, parsePrUrl } from '../src/core/sources/gh'
 import type { Fixture } from '../src/renderer/src/dev/fixture'
 
 const urls = process.argv.slice(2)
@@ -26,9 +26,10 @@ for (const url of urls) {
 
   console.log(`分块 ${url}`)
   const { pr, files } = await chunkPullRequest(url)
-  const policy = await getConvention(pr)
+  // Recorded without a convention; the mock applies whatever convention its settings hold when replaying.
+  const policy = null
   // judgeFiles merges judgments into the files it is given; keep the unjudged state the renderer first receives.
-  const start = { pr, files: structuredClone(files), policy }
+  const start = { pr, files: structuredClone(files), policy, policySource: null }
   const units: UnitResult[] = []
   console.log(`判断 ${files.length} 个文件`)
   const { model, inputTokens } = await judgeFiles(pr, files, { policy, client: new TypeSafeClient(), onUnit: (u) => units.push(u) })

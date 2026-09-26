@@ -61,7 +61,7 @@ export function Tooltip({ hover, file, state, judgment, error, llmReady, explana
         </>
       )}
       <div className="explanation">
-        {!llmReady && <span className="muted">在设置页配置通用模型后，这里会显示中文解释。</span>}
+        {!llmReady && <span className="muted">在设置里配置通用模型后，这里会显示中文解释。</span>}
         {explanation?.state === 'loading' && (
           <span className="muted explanation-loading">
             <Spinner size="sm" /> 正在生成解释…

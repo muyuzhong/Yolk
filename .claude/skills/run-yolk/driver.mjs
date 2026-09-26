@@ -21,7 +21,7 @@ const need = () => {
   return page
 }
 const status = () => need().evaluate(() => document.querySelector('.status')?.textContent ?? '(no review open)')
-// Pages live in the URL hash (#/, #/r/owner/repo, #/r/owner/repo/pull/N, #/settings).
+// Pages live in the URL hash (#/, #/repos, #/r/owner/repo, #/r/owner/repo/pull/N); settings are a dialog over them.
 const goto = (hash) => need().evaluate((h) => (location.hash = h), hash)
 /** The repository list is ready once `gh` has listed repositories (or failed to). */
 const waitForRepos = () =>
@@ -219,9 +219,11 @@ const COMMANDS = {
 
   async settings() {
     const p = need()
-    await goto('#/settings')
-    await p.waitForFunction(() => document.querySelectorAll('.settings input').length > 0, null, { timeout: 20_000 })
-    console.log('settings:', await p.evaluate(() => [...document.querySelectorAll('.settings input')].map((i) => `${i.value || i.placeholder}`).join(' | ')))
+    // Settings open as a dialog from the side nav, over whatever page is showing.
+    if (!(await p.$('.settings-dialog[open]'))) await p.click('nav >> text="设置"')
+    // Each setting is a row summarising its value (name, then value); the model section shows first.
+    await p.waitForFunction(() => document.querySelectorAll('.setting-row').length > 0, null, { timeout: 20_000 })
+    console.log('settings:', await p.evaluate(() => [...document.querySelectorAll('.setting-row')].map((r) => r.innerText.replace(/\n编辑$/, '').replace(/\n/g, ': ')).join(' | ')))
   },
 
   /** Force the color scheme (light|dark|system); Astryx and the diff colors follow it. */

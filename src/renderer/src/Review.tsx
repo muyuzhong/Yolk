@@ -16,10 +16,11 @@ import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { CircleAlert, CircleCheck, FileWarning, ScrollText } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Judgment } from '../../core/judgment'
+import { DEFAULT_THRESHOLDS, type Judgment } from '../../core/judgment'
 import type { ReviewStart } from '../../shared/api'
 import { DiffFile, type Hover } from './DiffFile'
 import { errorMessage, LABEL, SHOWN } from './labels'
+import { openSettings, useSettingsDialog } from './settingsDialog'
 import { navigate, pullRequestUrl } from './route'
 import { rememberReview } from './reviewed'
 import { blockStates, lineCounts, type Category } from './rows'
@@ -46,9 +47,16 @@ export function Review({ repo, number }: { repo: string; number: number }) {
   const [explanations, setExplanations] = useState<Record<string, Explanation>>({})
   const reviewIdRef = useRef('')
 
+  const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS)
+  // Re-read when the settings card closes: new thresholds change ✂ and ? at once, without judging again.
+  const settingsOpen = useSettingsDialog().isOpen
   useEffect(() => {
-    window.yolk.getSettings().then((settings) => setLlmReady(settings.llm.ready))
-  }, [])
+    if (settingsOpen) return
+    window.yolk.getSettings().then((settings) => {
+      setLlmReady(settings.llm.ready)
+      setThresholds(settings.judging.thresholds)
+    })
+  }, [settingsOpen])
 
   useEffect(() => {
     const reviewId = crypto.randomUUID()
@@ -78,8 +86,8 @@ export function Review({ repo, number }: { repo: string; number: number }) {
 
   const judgmentError = status.state === 'error' ? status.message : undefined
   const states = useMemo(
-    () => review?.files.map((file, i) => blockStates(file, judgments[i] ?? {}, unitErrors[i] ?? {}, judgmentError)) ?? [],
-    [review, judgments, unitErrors, judgmentError],
+    () => review?.files.map((file, i) => blockStates(file, judgments[i] ?? {}, unitErrors[i] ?? {}, judgmentError, thresholds)) ?? [],
+    [review, judgments, unitErrors, judgmentError, thresholds],
   )
   const counts = useMemo(() => review?.files.map((file, i) => lineCounts(file, states[i])) ?? [], [review, states])
   const totals = useMemo(() => {
@@ -90,7 +98,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
   // Once Jev has judged everything, remember the split so PR lists can show it next time.
   useEffect(() => {
     if (status.state !== 'done' || !review) return
-    rememberReview(url, { at: new Date().toISOString(), core: totals.core ?? 0, defense: totals.defense ?? 0, support: totals.support ?? 0 })
+    rememberReview(url, totals)
   }, [status, review, url, totals])
   // Units with at least one block that goes to Jev (test blocks do not).
   const totalUnits = useMemo(
@@ -178,7 +186,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
     )
   }
 
-  const { pr, files, policy } = review
+  const { pr, files, policy, policySource } = review
   const hovered = hover && files[hover.file]
   return (
     <>
@@ -207,7 +215,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
                   <Switch size="sm" label="只看核心" value={coreOnly} onChange={setCoreOnly} />
                   <Kbd keys="c" />
                 </HStack>
-                <Button size="sm" variant="ghost" label="项目约定" icon={<Icon icon={ScrollText} size="sm" />} onClick={() => setShowPolicy(true)} />
+                <Button size="sm" variant="ghost" label="审阅约定" icon={<Icon icon={ScrollText} size="sm" />} onClick={() => setShowPolicy(true)} />
                 <JudgeStatus status={status} judged={judgedUnits} total={totalUnits} />
               </HStack>
             </VStack>
@@ -266,16 +274,27 @@ export function Review({ repo, number }: { repo: string; number: number }) {
         />
       )}
       <Dialog isOpen={showPolicy} onOpenChange={setShowPolicy} width={640}>
-        <DialogHeader title="项目约定" subtitle="读取自 base 分支的 .yolk.md" onOpenChange={setShowPolicy} />
+        <DialogHeader
+          title="审阅约定"
+          subtitle={policySource === 'repo' ? `${repo} 的约定` : policySource === 'default' ? '默认约定（这个仓库没有单独的约定）' : '还没有约定'}
+          onOpenChange={setShowPolicy}
+        />
         <div className="policy">
           {policy ? (
-            <Markdown density="compact">{policy}</Markdown>
+            <VStack gap={4}>
+              <Markdown density="compact">{policy}</Markdown>
+              <HStack gap={2}>
+                <Button size="sm" label={policySource === 'repo' ? '编辑约定' : '给这个仓库单独写一份'} onClick={() => openSettings(repo)} />
+                <Text type="supporting">改动在下次打开这个 PR 时生效。</Text>
+              </HStack>
+            </VStack>
           ) : (
             <EmptyState
               isCompact
               icon={<Icon icon={ScrollText} size="lg" />}
-              title="这个仓库还没有 .yolk.md"
-              description="在仓库根目录写一份项目约定，例如「MVP 阶段不需要重试和降级」，Jev 会据此标出建议删除（✂）的代码。"
+              title="还没有审阅约定"
+              description="写下项目现阶段不需要哪些代码，例如「MVP 阶段不需要重试和降级」，Jev 会据此标出建议删除（✂）的块。"
+              actions={<Button size="sm" label="写一份约定" onClick={() => openSettings(repo)} />}
             />
           )}
         </div>

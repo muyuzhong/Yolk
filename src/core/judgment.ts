@@ -9,10 +9,37 @@ export interface Judgment {
   excluded: number | null
 }
 
-/** Initial thresholds (DESIGN.md §7.1); tune on real PRs. */
-export const LOW_CONFIDENCE = 0.5
-export const EXCLUDED_THRESHOLD = 0.7
+/** When a judgment is shown as unsure (?) or suggested for removal (✂). */
+export interface Thresholds {
+  /** Below this role confidence a block is drawn faded with a "?". */
+  lowConfidence: number
+  /** At or above this probability that the convention rules a block out, it gets ✂. */
+  excluded: number
+}
 
-export const isUnsure = (j: Judgment) => j.confidence < LOW_CONFIDENCE
+/** Initial thresholds (DESIGN.md §7.1), tuned on a handful of real PRs; users can override them in settings. */
+export const DEFAULT_THRESHOLDS: Thresholds = { lowConfidence: 0.5, excluded: 0.7 }
+
+/** What each role means, sent to Jev as the answer options; users can reword them in settings. */
+export const DEFAULT_ROLE_CRITERIA: Record<Role, string> = {
+  core: "Implements what the PR is for; removing it breaks the normal path",
+  defense: 'Only matters when something goes wrong: validation, error handling, retries, timeouts, fallbacks, null guards',
+  support: 'Does not change behavior: logging, types, imports, wiring, boilerplate, config',
+}
+
+/** Everything about how blocks are judged that the user may change; any field left out uses its default. */
+export interface JudgingSettings {
+  thresholds: Thresholds
+  roles: Record<Role, string>
+}
+
+export interface JudgingUpdate {
+  thresholds?: Partial<Thresholds>
+  roles?: Partial<Record<Role, string>>
+}
+
+export const DEFAULT_JUDGING: JudgingSettings = { thresholds: DEFAULT_THRESHOLDS, roles: DEFAULT_ROLE_CRITERIA }
+
+export const isUnsure = (j: Judgment, t: Thresholds = DEFAULT_THRESHOLDS) => j.confidence < t.lowConfidence
 /** ✂ ignores the role: a PR whose purpose is adding retries gets its retry code judged core. */
-export const suggestsRemoval = (j: Judgment) => (j.excluded ?? 0) >= EXCLUDED_THRESHOLD
+export const suggestsRemoval = (j: Judgment, t: Thresholds = DEFAULT_THRESHOLDS) => (j.excluded ?? 0) >= t.excluded

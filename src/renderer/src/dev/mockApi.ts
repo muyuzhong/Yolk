@@ -1,5 +1,6 @@
 // `window.yolk` for `npm run dev:web`: replays fixtures/yolk.json (from `npm run capture`) in a plain browser.
-import type { ReviewProgress, SettingsUpdate, SettingsView, YolkApi } from '../../../shared/api'
+import { DEFAULT_JUDGING, type JudgingSettings } from '../../../core/judgment'
+import type { Conventions, ReviewProgress, SettingsUpdate, SettingsView, YolkApi } from '../../../shared/api'
 import type { Fixture } from './fixture'
 
 /** Delay between replayed Jev units, so the progress UI is visible. */
@@ -12,9 +13,19 @@ export async function mockApi(): Promise<YolkApi> {
   if (!response.ok) throw new Error('没有 fixtures/yolk.json，先运行 npm run capture -- <PR 链接>')
   const fixture: Fixture = await response.json()
 
+  // Conventions persist in localStorage so a reload keeps them, like the real settings file would.
+  const CONVENTIONS = 'yolk.mockConventions'
+  const readConventions = (): Conventions => {
+    const saved: Conventions = JSON.parse(localStorage.getItem(CONVENTIONS) ?? '{"default":"","repos":{}}')
+    return { ...saved, repos: Object.fromEntries(Object.entries(saved.repos).map(([repo, text]) => [repo.toLowerCase(), text])) }
+  }
+  const JUDGING = 'yolk.mockJudging'
+  const readJudging = (): JudgingSettings => JSON.parse(localStorage.getItem(JUDGING) ?? 'null') ?? DEFAULT_JUDGING
   let settings: SettingsView = {
     jev: { model: 'jev-latest', hasKey: true },
     llm: { baseURL: 'http://mock', model: 'mock', hasKey: true, ready: true },
+    conventions: readConventions(),
+    judging: readJudging(),
   }
   const listeners = new Set<(progress: ReviewProgress) => void>()
   const emit = (progress: ReviewProgress) => listeners.forEach((listener) => listener(progress))
@@ -24,9 +35,30 @@ export async function mockApi(): Promise<YolkApi> {
     getSettings: async () => settings,
     saveSettings: async (update: SettingsUpdate) => {
       settings = {
-        jev: { model: update.jev.model, hasKey: update.jev.apiKey !== '' },
-        llm: { ...update.llm, hasKey: update.llm.apiKey !== '', ready: true },
+        jev: { model: update.jev?.model ?? settings.jev.model, hasKey: update.jev?.apiKey === undefined ? settings.jev.hasKey : update.jev.apiKey !== '' },
+        llm: { baseURL: update.llm?.baseURL ?? settings.llm.baseURL, model: update.llm?.model ?? settings.llm.model, hasKey: update.llm?.apiKey === undefined ? settings.llm.hasKey : update.llm.apiKey !== '', ready: true },
+        conventions: settings.conventions,
+        judging: settings.judging,
       }
+      return settings
+    },
+    saveJudging: async (judging) => {
+      const next = judging ? {
+        thresholds: { ...settings.judging.thresholds, ...judging.thresholds },
+        roles: { ...settings.judging.roles, ...judging.roles },
+      } : DEFAULT_JUDGING
+      localStorage.setItem(JUDGING, JSON.stringify(next))
+      settings = { ...settings, judging: next }
+      return settings
+    },
+    saveConvention: async (repo, text) => {
+      repo = repo?.toLowerCase() ?? null
+      const { default: fallback, repos } = settings.conventions
+      const { [repo ?? '']: _, ...others } = repos
+      const trimmed = text.trim()
+      const conventions = repo === null ? { default: trimmed, repos } : { default: fallback, repos: trimmed ? { ...others, [repo]: trimmed } : others }
+      localStorage.setItem(CONVENTIONS, JSON.stringify(conventions))
+      settings = { ...settings, conventions }
       return settings
     },
     listRepositories: async () => fixture.repositories,
@@ -47,8 +79,13 @@ export async function mockApi(): Promise<YolkApi> {
         }
         emit({ type: 'done', reviewId, model: review.model, inputTokens: review.inputTokens })
       })()
-      // The renderer merges judgments into what it receives; hand out a fresh copy each time.
-      return structuredClone(review.start)
+      // The renderer merges judgments into what it receives; hand out a fresh copy each time. The judgments were
+      // recorded without a convention, so the one applied here only changes what the review page shows.
+      const { pr } = review.start
+      const repo = `${pr.host === 'github.com' ? '' : `${pr.host}/`}${pr.owner}/${pr.repo}`.toLowerCase()
+      const { default: fallback, repos } = settings.conventions
+      const policy = repos[repo] || fallback || null
+      return { ...structuredClone(review.start), policy, policySource: repos[repo] ? 'repo' : fallback ? 'default' : null }
     },
     cancelReview: (reviewId) => cancelled.add(reviewId),
     explainBlock: async (_reviewId, fileIndex, blockId) => {

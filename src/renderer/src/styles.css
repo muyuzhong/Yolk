@@ -460,3 +460,61 @@ section.file {
   opacity: 1;
   translate: 0 0;
 }
+
+/*
+ * Settings: a frosted-glass card over the current page. A section list on the side, and rows that summarise a value
+ * and open in place to edit it.
+ */
+.settings-dialog {
+  background: color-mix(in srgb, var(--color-background-surface) 68%, transparent);
+  backdrop-filter: blur(var(--spacing-8)) saturate(1.6);
+  border: thin solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-radius: var(--radius-page);
+  box-shadow: var(--shadow-high);
+  overflow: hidden;
+}
+.settings-dialog::backdrop {
+  background: color-mix(in srgb, var(--color-background-body) 20%, transparent);
+  backdrop-filter: blur(var(--spacing-1));
+}
+/* A fixed height, so switching sections does not make the card jump. */
+.settings-card {
+  height: min(78dvh, calc(var(--spacing-12) * 13));
+}
+.settings-nav {
+  width: 220px;
+  flex-shrink: 0;
+  padding: var(--spacing-5) var(--spacing-3);
+  border-inline-end: thin solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  background: color-mix(in srgb, var(--color-background-muted) 35%, transparent);
+}
+.settings-title {
+  padding-inline: var(--spacing-3);
+}
+.settings-pane {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--spacing-6) var(--spacing-8);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+.settings-pane-header {
+  padding-block-end: var(--spacing-6);
+}
+.setting-section-header {
+  padding-block-end: var(--spacing-3);
+}
+.setting-row {
+  padding-block: var(--spacing-4);
+}
+.settings-notice {
+  animation: settings-notice-in var(--duration-medium) var(--ease-out);
+}
+@keyframes settings-notice-in {
+  from { opacity: 0; translate: calc(var(--spacing-1) * -1) 0; }
+}
+/* The slider's "默认" mark label hangs below its track; keep the hint under it clear. */
+.setting-row .astryx-slider {
+  margin-block-end: var(--spacing-5);
+}

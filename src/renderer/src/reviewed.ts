@@ -1,5 +1,6 @@
 // What Yolk found the last time each PR was fully judged, per machine, so PR lists can show it without re-judging.
 import { useSyncExternalStore } from 'react'
+import type { Category } from './rows'
 
 const KEY = 'yolk.reviewedPullRequests'
 /** Oldest entries are dropped past this many PRs. */
@@ -27,7 +28,9 @@ function read(): Store {
   }
 }
 
-export function rememberReview(url: string, summary: ReviewedSummary) {
+export function rememberReview(url: string, counts: Partial<Record<Category, number>>) {
+  if (counts.failed || counts.pending) return
+  const summary: ReviewedSummary = { at: new Date().toISOString(), core: counts.core ?? 0, defense: counts.defense ?? 0, support: counts.support ?? 0 }
   const { [url]: _, ...rest } = read()
   const entries = Object.entries({ ...rest, [url]: summary }).slice(-LIMIT)
   localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(entries)))
