@@ -131,8 +131,9 @@ profile in `/tmp/yolk-shots/userdata`, so `~/.config/yolk` is never touched.
 | `file <n\|last>` | scroll file n (0-based) into view |
 | `hover-block <core\|defense\|support\|test\|pending>` | hover the first line of that category, print the tooltip |
 | `explain <category>` | hover like `hover-block`, wait for the general model's explanation, print it with the block id |
-| `core-only` | toggle 只看核心, print how many fold rows exist |
-| `settings` / `home` | navigate (`home` clicks back until the home page; a review goes back to its repository first) |
+| `core-only` | toggle 只看核心 with its keyboard shortcut C, print how many fold rows exist |
+| `theme <light\|dark\|system>` | force the color scheme (Electron nativeTheme + Playwright media emulation) |
+| `settings` / `home` | navigate by setting the URL hash (`#/settings`, `#/`); pages are hash routes |
 | `ss [name]` | screenshot to `$SCREENSHOT_DIR/<name>.png` |
 | `click <css>` / `text [css]` / `eval <js>` | generic DOM helpers |
 | `quit` | close the app and exit |
@@ -173,6 +174,11 @@ rows); none call an API.
   reads `TYPESAFE_API_KEY`; without it the diff still renders but the header shows 判断失败 (see Troubleshooting).
 - **tmux here starts fish** (with a fastfetch greeting), and `~/.config/typesafe/env` is bash syntax - start the
   session with `bash --norc` as above.
+- **Playwright forces a light color scheme.** It emulates `prefers-color-scheme: light` by default, so setting
+  Electron's `nativeTheme` alone changes nothing in the page. `theme dark` does both.
+- **Pages are hash routes** (`#/`, `#/r/owner/repo`, `#/r/owner/repo/pull/N`, `#/settings`). `eval location.hash =
+  '...'` jumps anywhere; the UI is built with Astryx components, so look elements up by the app's own classes
+  (`.home-search`, `.pr-item[data-number]`, `.file-list-item`, `.line.add.cat-*`, `.tooltip`), not Astryx internals.
 - **Test code never goes to Jev.** Test files and Rust `#[cfg(test)]` items render green at once and are not
   counted in "Jev 判断中 x/y".
 - The driver never saves settings: saving encrypts keys through Electron's safeStorage (the OS keyring), which

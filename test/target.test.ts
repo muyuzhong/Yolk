@@ -3,11 +3,7 @@ import assert from 'node:assert/strict'
 import { parseTarget } from '../src/renderer/src/target'
 
 test('PR links open the PR and remember its repository', () => {
-  assert.deepEqual(parseTarget(' https://github.com/honojs/hono/pull/5377/files '), {
-    kind: 'pr',
-    url: 'https://github.com/honojs/hono/pull/5377/files',
-    repo: 'honojs/hono',
-  })
+  assert.deepEqual(parseTarget(' https://github.com/honojs/hono/pull/5377/files '), { kind: 'pr', repo: 'honojs/hono', number: 5377 })
 })
 
 test('repository links and owner/repo open the repository', () => {

@@ -111,7 +111,6 @@ export function buildRows(file: FileResult, states: Map<string, BlockState>, cor
     fillBlankLines(lineRows)
 
     lineRows.forEach((row) => {
-      const { line } = row
       const foldable = coreOnly && FOLDABLE.includes(row.category) && !row.unsure
       const blankBetween = isBlankAdd(row) && row.category === 'none' && run.length > 0
       if (foldable || blankBetween) run.push(row)

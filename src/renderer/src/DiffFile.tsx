@@ -1,8 +1,13 @@
+import { Icon } from '@astryxdesign/core/Icon'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { Text } from '@astryxdesign/core/Text'
+import { Token } from '@astryxdesign/core/Token'
+import { ChevronDown, ChevronRight, ChevronsUpDown } from 'lucide-react'
 import { memo, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { ThemedToken } from 'shiki'
 import type { FileResult } from '../../core/analyze'
 import { highlightHunks } from './highlight'
-import { LABEL } from './labels'
+import { LABEL, SHOWN } from './labels'
 import { buildRows, type BlockState, type Category, type LineRow } from './rows'
 
 export interface Hover {
@@ -16,17 +21,24 @@ interface Props {
   index: number
   file: FileResult
   states: Map<string, BlockState>
+  counts: Partial<Record<Category, number>>
   unitErrors?: Record<string, string>
   coreOnly: boolean
   hoveredBlock?: string
   onHover: (hover: Hover | undefined) => void
 }
 
-const STATUS: Record<FileResult['diff']['status'], string> = { added: '新增', deleted: '删除', modified: '', renamed: '重命名' }
+const STATUS: Record<FileResult['diff']['status'], [string, 'green' | 'red' | 'blue'] | undefined> = {
+  added: ['新增', 'green'],
+  deleted: ['删除', 'red'],
+  renamed: ['重命名', 'blue'],
+  modified: undefined,
+}
 
-export const DiffFile = memo(function DiffFile({ index, file, states, unitErrors, coreOnly, hoveredBlock, onHover }: Props) {
+export const DiffFile = memo(function DiffFile({ index, file, states, counts, unitErrors, coreOnly, hoveredBlock, onHover }: Props) {
   const [tokens, setTokens] = useState<Map<string, ThemedToken[]>>()
   const [expanded, setExpanded] = useState(new Set<string>())
+  const [isCollapsed, setIsCollapsed] = useState(false)
 
   useEffect(() => {
     highlightHunks(file.diff.path, file.diff.hunks).then(setTokens)
@@ -36,50 +48,73 @@ export const DiffFile = memo(function DiffFile({ index, file, states, unitErrors
 
   const rows = useMemo(() => buildRows(file, states, coreOnly, expanded), [file, states, coreOnly, expanded])
   const { diff } = file
+  const status = STATUS[diff.status]
 
   return (
-    <section className="file" id={`file-${index}`}>
+    <section className="file" id={`file-${index}`} data-index={index}>
       <header className="file-header">
+        <IconButton
+          size="sm"
+          variant="ghost"
+          label={isCollapsed ? '展开文件' : '折叠文件'}
+          icon={<Icon icon={isCollapsed ? ChevronRight : ChevronDown} size="sm" />}
+          onClick={() => setIsCollapsed((v) => !v)}
+        />
         <span className="file-path">
-          {diff.status === 'renamed' && <span className="muted">{diff.oldPath} → </span>}
+          {diff.status === 'renamed' && <span className="file-old-path">{diff.oldPath} → </span>}
           {diff.path}
         </span>
-        {STATUS[diff.status] && <span className="tag">{STATUS[diff.status]}</span>}
-        {file.skipped && <span className="muted">{file.skipped}，只显示 diff</span>}
+        {status && <Token size="sm" color={status[1]} label={status[0]} />}
+        <span className="spacer" />
+        {file.skipped ? (
+          <Text type="supporting">{file.skipped}，只显示 diff</Text>
+        ) : (
+          SHOWN.filter((c) => counts[c]).map((c) => (
+            <span key={c} className={`legend-item cat-${c}`}>
+              {LABEL[c]} {counts[c]}
+            </span>
+          ))
+        )}
       </header>
-      {unitErrors &&
-        Object.entries(unitErrors).map(([unit, error]) => (
-          <div key={unit} className="unit-error">
-            {unit} 判断失败：{error}
-          </div>
-        ))}
-      <div className="diff">
-        {rows.map((row) => {
-          if (row.kind === 'hunk') return <div key={row.key} className="hunk-header">{row.header}</div>
-          if (row.kind === 'fold') {
-            const summary = (Object.entries(row.counts) as [Category, number][]).map(([c, n]) => `${LABEL[c]} ${n} 行`).join(' · ')
+      {!isCollapsed && unitErrors && (
+        <div className="unit-errors">
+          {Object.entries(unitErrors).map(([unit, error]) => (
+            <div key={unit}>
+              {unit} 判断失败：{error}
+            </div>
+          ))}
+        </div>
+      )}
+      {!isCollapsed && (
+        <div className="diff">
+          {rows.map((row) => {
+            if (row.kind === 'hunk') return <div key={row.key} className="hunk-header">{row.header}</div>
+            if (row.kind === 'fold') {
+              const summary = (Object.entries(row.counts) as [Category, number][]).map(([c, n]) => `${LABEL[c]} ${n} 行`).join(' · ')
+              return (
+                <button key={row.key} className="fold" onClick={() => setExpanded((s) => new Set(s).add(row.key))}>
+                  <Icon icon={ChevronsUpDown} size="xsm" />
+                  已折叠 {summary}
+                </button>
+              )
+            }
             return (
-              <button key={row.key} className="fold" onClick={() => setExpanded((s) => new Set(s).add(row.key))}>
-                ⋯ {summary}（点击展开）
-              </button>
+              <Line
+                key={row.key}
+                row={row}
+                tokens={tokens?.get(row.key)}
+                hovered={row.block !== undefined && row.block === hoveredBlock}
+                onEnter={(e) => onHover(row.block ? { file: index, block: row.block, x: e.clientX, y: e.clientY } : undefined)}
+              />
             )
-          }
-          return (
-            <Line
-              key={row.key}
-              row={row}
-              tokens={tokens?.get(row.key)}
-              hovered={row.block !== undefined && row.block === hoveredBlock}
-              onEnter={(e) => onHover(row.block ? { file: index, block: row.block, x: e.clientX, y: e.clientY } : undefined)}
-            />
-          )
-        })}
-      </div>
+          })}
+        </div>
+      )}
     </section>
   )
 })
 
-const SIGN = { add: '+', del: '-', ctx: ' ' }
+const SIGN = { add: '+', del: '−', ctx: ' ' }
 
 function Line({ row, tokens, hovered, onEnter }: { row: LineRow; tokens?: ThemedToken[]; hovered: boolean; onEnter: (e: React.MouseEvent) => void }) {
   const { line } = row

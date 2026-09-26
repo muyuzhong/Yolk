@@ -16,3 +16,6 @@ export const SHOWN: Category[] = ['core', 'defense', 'support', 'test']
 /** IPC errors arrive as "Error invoking remote method 'x': Error: message". */
 export const errorMessage = (error: unknown) =>
   String(error instanceof Error ? error.message : error).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+
+/** GitHub serves account avatars at /<login>.png; GitHub Enterprise logins fall back to initials. */
+export const avatarUrl = (login: string) => `https://github.com/${login}.png?size=64`
