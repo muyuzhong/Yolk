@@ -28,11 +28,9 @@ const SYSTEM_CUT = '项目约定可能认为这段代码现在不需要：最后
 /** The block's surrounding unit with the block's lines marked `>>`, plus the convention when it matters. */
 export function explainMessages({ pr, path, source, unit, block, policy }: ExplainInput): ChatCompletionMessageParam[] {
   const marked = new Set(block.lines)
-  const start = Math.min(unit.start, block.lines[0])
-  const end = Math.max(unit.end, block.lines[block.lines.length - 1])
   const code = source
-    .slice(start - 1, end)
-    .map((text, i) => (marked.has(start + i) ? '>> ' : '   ') + text)
+    .slice(unit.start - 1, unit.end)
+    .map((text, i) => (marked.has(unit.start + i) ? '>> ' : '   ') + text)
     .join('\n')
   const user = [
     `PR：${pr.title}`,
@@ -47,9 +45,9 @@ export function explainMessages({ pr, path, source, unit, block, policy }: Expla
   ]
 }
 
-export async function explain(config: LlmConfig, input: ExplainInput): Promise<string> {
+export async function explain(config: LlmConfig, input: ExplainInput, signal?: AbortSignal): Promise<string> {
   const client = new OpenAI({ baseURL: config.baseURL, apiKey: config.apiKey })
-  const completion = await client.chat.completions.create({ model: config.model, messages: explainMessages(input) })
+  const completion = await client.chat.completions.create({ model: config.model, messages: explainMessages(input) }, { signal })
   const text = completion.choices[0]?.message.content?.trim()
   if (!text) throw new Error('模型没有返回内容')
   return text

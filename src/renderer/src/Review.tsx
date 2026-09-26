@@ -67,17 +67,25 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
   }, [])
 
   // Resting 400ms on a block asks the general model; the main process caches the answers.
-  const hoverKey = hover ? `${hover.file}:${hover.block}` : undefined
+  const hoverKey = hover ? `${hover.file}:${hover.block}:${states[hover.file]?.get(hover.block)?.cut ?? false}` : undefined
   useEffect(() => {
     if (!hover || !hoverKey || !llmReady) return
+    let active = true
     const timer = setTimeout(() => {
       setExplanations((all) => (all[hoverKey] && all[hoverKey].state !== 'error' ? all : { ...all, [hoverKey]: { state: 'loading' } }))
       window.yolk.explainBlock(reviewIdRef.current, hover.file, hover.block).then(
-        (text) => setExplanations((all) => ({ ...all, [hoverKey]: { state: 'done', text } })),
-        (e) => setExplanations((all) => ({ ...all, [hoverKey]: { state: 'error', text: errorMessage(e) } })),
+        (text) => {
+          if (active) setExplanations((all) => ({ ...all, [hoverKey]: { state: 'done', text } }))
+        },
+        (e) => {
+          if (active) setExplanations((all) => ({ ...all, [hoverKey]: { state: 'error', text: errorMessage(e) } }))
+        },
       )
     }, 400)
-    return () => clearTimeout(timer)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
   }, [hoverKey, llmReady])
 
   if (loadError) {
@@ -186,7 +194,7 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
           judgment={judgments[hover.file]?.[hover.block]}
           error={unitErrors[hover.file]?.[states[hover.file].get(hover.block)?.unit ?? ''] ?? judgmentError}
           llmReady={llmReady}
-          explanation={explanations[`${hover.file}:${hover.block}`]}
+          explanation={hoverKey ? explanations[hoverKey] : undefined}
         />
       )}
     </div>
