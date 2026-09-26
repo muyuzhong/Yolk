@@ -1,5 +1,5 @@
 import { TypeSafeClient } from '@typesafe-ai/sdk'
-import { app, BrowserWindow, ipcMain, shell, type WebContents } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, shell, type WebContents } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { chunkPullRequest, judgeFiles } from '../core/analyze'
 import { suggestsRemoval } from '../core/judgment'
@@ -18,7 +18,12 @@ function createWindow() {
   const window = new BrowserWindow({
     width: 1440,
     height: 920,
+    minWidth: 1024,
+    minHeight: 640,
     title: 'Yolk',
+    autoHideMenuBar: true,
+    // Astryx's body background, so the window does not flash white before the page paints.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#111112' : '#F1F4F7',
     webPreferences: { preload: fileURLToPath(new URL('../preload/index.cjs', import.meta.url)) },
   })
   window.webContents.setWindowOpenHandler(({ url }) => {

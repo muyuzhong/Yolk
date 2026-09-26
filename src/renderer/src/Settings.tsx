@@ -1,15 +1,30 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { Banner } from '@astryxdesign/core/Banner'
+import { Button } from '@astryxdesign/core/Button'
+import { Card } from '@astryxdesign/core/Card'
+import { Heading } from '@astryxdesign/core/Heading'
+import { HStack } from '@astryxdesign/core/HStack'
+import { Layout, LayoutContent } from '@astryxdesign/core/Layout'
+import { Text } from '@astryxdesign/core/Text'
+import { TextInput } from '@astryxdesign/core/TextInput'
+import { Token } from '@astryxdesign/core/Token'
+import { useToast } from '@astryxdesign/core/Toast'
+import { VStack } from '@astryxdesign/core/VStack'
+import { KeyRound, Link2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { SettingsView } from '../../shared/api'
+import { ListSkeleton } from './Home'
 import { errorMessage } from './labels'
 
-export function Settings({ onBack }: { onBack: () => void }) {
+export function Settings() {
+  const showToast = useToast()
   const [view, setView] = useState<SettingsView>()
+  const [loadError, setLoadError] = useState<string>()
   const [jevModel, setJevModel] = useState('')
   const [jevKey, setJevKey] = useState('')
   const [baseURL, setBaseURL] = useState('')
   const [llmModel, setLlmModel] = useState('')
   const [llmKey, setLlmKey] = useState('')
-  const [status, setStatus] = useState<string>()
+  const [isSaving, setIsSaving] = useState(false)
 
   const load = (settings: SettingsView) => {
     setView(settings)
@@ -21,93 +36,110 @@ export function Settings({ onBack }: { onBack: () => void }) {
   }
 
   useEffect(() => {
-    window.yolk.getSettings().then(load, (error) => setStatus(`读取设置失败：${errorMessage(error)}`))
+    window.yolk.getSettings().then(load, (error) => setLoadError(errorMessage(error)))
   }, [])
 
-  const save = async (event: FormEvent, clear?: 'jev' | 'llm') => {
-    event.preventDefault()
+  const save = async (clear?: 'jev' | 'llm') => {
+    setIsSaving(true)
     try {
-      const saved = await window.yolk.saveSettings({
-        jev: { model: jevModel.trim(), apiKey: clear === 'jev' ? '' : jevKey || undefined },
-        llm: { baseURL: baseURL.trim(), model: llmModel.trim(), apiKey: clear === 'llm' ? '' : llmKey || undefined },
-      })
-      load(saved)
-      setStatus('已保存')
+      load(
+        await window.yolk.saveSettings({
+          jev: { model: jevModel.trim(), apiKey: clear === 'jev' ? '' : jevKey || undefined },
+          llm: { baseURL: baseURL.trim(), model: llmModel.trim(), apiKey: clear === 'llm' ? '' : llmKey || undefined },
+        }),
+      )
+      showToast({ body: clear ? '已清除保存的 API Key' : '设置已保存' })
     } catch (error) {
-      setStatus(`保存失败：${errorMessage(error)}`)
+      showToast({ type: 'error', body: `保存失败：${errorMessage(error)}` })
+    } finally {
+      setIsSaving(false)
     }
   }
 
   return (
-    <div className="settings">
-      <header className="page-header">
-        <button className="link" onClick={onBack}>
-          ◀ 返回
-        </button>
-        <h1>设置</h1>
-      </header>
-      {!view ? (
-        <p className={status ? 'error' : 'muted'}>{status ?? '正在读取设置…'}</p>
-      ) : (
-        <form onSubmit={save}>
-          <fieldset>
-            <legend>Jev（判断代码块）</legend>
-            <label>
-              API Key
-              <input
-                type="password"
-                value={jevKey}
-                onChange={(e) => setJevKey(e.target.value)}
-                placeholder={view.jev.hasKey ? '已设置，留空表示不修改' : '未设置，将使用环境变量 TYPESAFE_API_KEY'}
-              />
-              {view.jev.hasKey && (
-                <button type="button" className="link" onClick={(e) => save(e, 'jev')}>
-                  清除
-                </button>
-              )}
-            </label>
-            <label>
-              模型
-              <input value={jevModel} onChange={(e) => setJevModel(e.target.value)} placeholder="jev-latest" />
-            </label>
-            <p className="hint">阈值调好后，建议固定成具体版本号（如 jev-1.13.0），避免别名升级后阈值失效。</p>
-          </fieldset>
-          <fieldset>
-            <legend>通用模型（悬停解释）</legend>
-            <label>
-              Base URL
-              <input value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder="https://api.openai.com/v1" />
-            </label>
-            <label>
-              API Key
-              <input
-                type="password"
-                value={llmKey}
-                onChange={(e) => setLlmKey(e.target.value)}
-                placeholder={view.llm.hasKey ? '已设置，留空表示不修改' : '未设置'}
-              />
-              {view.llm.hasKey && (
-                <button type="button" className="link" onClick={(e) => save(e, 'llm')}>
-                  清除
-                </button>
-              )}
-            </label>
-            <label>
-              模型
-              <input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} placeholder="模型名" />
-            </label>
-            <p className="hint">
-              任何 OpenAI 兼容接口都可以，包括内网或本机部署的模型；不需要 key 的服务随便填一个即可。留空的项会使用环境变量 OPENAI_BASE_URL、OPENAI_API_KEY、OPENAI_MODEL。
-              {view.llm.ready ? ' 当前已可用。' : ' 当前还不可用。'}
-            </p>
-          </fieldset>
-          <p className="hint">API Key 用系统钥匙串加密后保存在本机，不会发送给界面进程。</p>
-          <div className="actions">
-            <button type="submit">保存</button>
-            {status && <span className="muted">{status}</span>}
-          </div>
-        </form>
-      )}
-    </div>
+    <Layout padding={6} contentWidth={720}>
+      <LayoutContent>
+        <VStack gap={6} className="settings">
+          <VStack gap={1}>
+            <Heading level={1}>设置</Heading>
+            <Text type="supporting">API Key 用系统钥匙串加密后保存在本机，只在主进程里使用，不会传给界面。</Text>
+          </VStack>
+          {loadError && <Banner status="error" title="读取设置失败" description={loadError} />}
+          {!view && !loadError && <ListSkeleton rows={4} />}
+          {view && (
+            <>
+              <Card>
+                <VStack gap={4}>
+                  <HStack gap={2}>
+                    <Heading level={2}>Jev</Heading>
+                    <Text type="supporting">判断每个代码块是核心、防御还是支撑</Text>
+                    <span className="spacer" />
+                    <Token size="sm" color={view.jev.hasKey ? 'green' : 'gray'} label={view.jev.hasKey ? '已保存 Key' : '使用环境变量'} />
+                  </HStack>
+                  <TextInput
+                    type="password"
+                    label="API Key"
+                    startIcon={KeyRound}
+                    value={jevKey}
+                    onChange={setJevKey}
+                    placeholder={view.jev.hasKey ? '已保存，留空表示不修改' : '未保存，将使用环境变量 TYPESAFE_API_KEY'}
+                    autoComplete="off"
+                  />
+                  <TextInput
+                    label="模型"
+                    value={jevModel}
+                    onChange={setJevModel}
+                    placeholder="jev-latest"
+                    description="阈值调好后，建议固定成具体版本号（如 jev-1.13.0），避免别名升级后阈值失效。"
+                  />
+                  {view.jev.hasKey && (
+                    <HStack gap={2}>
+                      <Button size="sm" variant="ghost" label="清除已保存的 Key" onClick={() => save('jev')} />
+                    </HStack>
+                  )}
+                </VStack>
+              </Card>
+              <Card>
+                <VStack gap={4}>
+                  <HStack gap={2}>
+                    <Heading level={2}>通用模型</Heading>
+                    <Text type="supporting">生成悬停时的中文解释</Text>
+                    <span className="spacer" />
+                    <Token size="sm" color={view.llm.ready ? 'green' : 'yellow'} label={view.llm.ready ? '已可用' : '未配置'} />
+                  </HStack>
+                  <TextInput
+                    label="Base URL"
+                    startIcon={Link2}
+                    value={baseURL}
+                    onChange={setBaseURL}
+                    placeholder="https://api.openai.com/v1"
+                    description="任何 OpenAI 兼容接口都可以，包括内网或本机部署的模型。"
+                  />
+                  <TextInput
+                    type="password"
+                    label="API Key"
+                    startIcon={KeyRound}
+                    value={llmKey}
+                    onChange={setLlmKey}
+                    placeholder={view.llm.hasKey ? '已保存，留空表示不修改' : '未保存；不需要 key 的服务随便填一个即可'}
+                    autoComplete="off"
+                  />
+                  <TextInput label="模型" value={llmModel} onChange={setLlmModel} placeholder="模型名，例如 gpt-4.1-mini" />
+                  <Text type="supporting">留空的项会使用环境变量 OPENAI_BASE_URL、OPENAI_API_KEY、OPENAI_MODEL。</Text>
+                  {view.llm.hasKey && (
+                    <HStack gap={2}>
+                      <Button size="sm" variant="ghost" label="清除已保存的 Key" onClick={() => save('llm')} />
+                    </HStack>
+                  )}
+                </VStack>
+              </Card>
+              <HStack gap={2}>
+                <Button variant="primary" label="保存设置" isLoading={isSaving} onClick={() => save()} />
+              </HStack>
+            </>
+          )}
+        </VStack>
+      </LayoutContent>
+    </Layout>
   )
 }

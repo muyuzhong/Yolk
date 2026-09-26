@@ -21,6 +21,31 @@ const need = () => {
   return page
 }
 const status = () => need().evaluate(() => document.querySelector('.status')?.textContent ?? '(no review open)')
+// Pages live in the URL hash (#/, #/r/owner/repo, #/r/owner/repo/pull/N, #/settings).
+const goto = (hash) => need().evaluate((h) => (location.hash = h), hash)
+/** The home page is ready once `gh` has listed repositories (or failed to). */
+const waitForHome = () =>
+  need().waitForFunction(() => document.querySelector('.home-search') && /个仓库|个匹配的仓库|读取仓库列表失败/.test(document.body.innerText), null, {
+    timeout: 60_000,
+  })
+const homeSummary = () =>
+  need().evaluate(() =>
+    [document.querySelector('.home-search')?.parentElement?.parentElement?.innerText.split('\n')[0], ...[...document.querySelectorAll('.repo-item')].slice(0, 5).map((e) => e.innerText.split('\n')[0])].join(' | '),
+  )
+/** Search the home input and press Enter: owner/repo opens a repository, a PR link opens the review. */
+const submitHome = async (text) => {
+  const p = need()
+  await goto('#/')
+  await waitForHome()
+  await p.fill('.home-search input', text)
+  await p.press('.home-search input', 'Enter')
+}
+const waitForReview = async () => {
+  const p = need()
+  await p.waitForFunction(() => document.querySelector('.review-header') || document.body.innerText.includes('打开 PR 失败'), null, { timeout: 120_000 })
+  const failed = await p.evaluate(() => (document.querySelector('.review-header') ? null : document.body.innerText.match(/打开 PR 失败[\s\S]{0,300}/)?.[0]))
+  console.log(failed ? `open failed: ${failed.replace(/\n/g, ' ')}` : `opened: ${await p.textContent('.review-title')}`)
+}
 /** Fail fast instead of waiting out long timeouts when `open` did not succeed. */
 const needReview = async () => {
   const p = need()
@@ -54,10 +79,8 @@ const COMMANDS = {
       window.setSize(1440, 920)
       window.setIgnoreMouseEvents(true)
     })
-    await page.waitForSelector('.home', { timeout: 20_000 })
-    // The home page lists PRs through `gh search prs`; wait until that settles.
-    await page.waitForFunction(() => !document.body.textContent.includes('正在通过 gh 读取'), null, { timeout: 30_000 })
-    console.log('launched:', await page.evaluate(() => document.querySelector('.home')?.innerText.split('\n').slice(0, 6).join(' | ')))
+    await waitForHome()
+    console.log('launched:', await homeSummary())
   },
 
   async ss(name) {
@@ -68,24 +91,24 @@ const COMMANDS = {
 
   /** Open a repository from the home page input and list its open PRs. */
   async repo(name) {
-    const p = need()
     if (!name) throw new Error('usage: repo <owner/repo>')
-    if (!(await p.$('.home'))) await COMMANDS.home()
-    await p.fill('.open-form input', name)
-    await p.press('.open-form input', 'Enter')
-    await p.waitForSelector('.repo-page')
+    await submitHome(name)
+    await need().waitForSelector('.state-tabs')
     await COMMANDS.prs()
   },
 
   /** Switch the repository page to a PR state (open|merged|closed|all) and print the list. */
   async prs(state) {
     const p = need()
-    if (!(await p.$('.repo-page'))) throw new Error('no repository open - run `repo <owner/repo>` first')
+    if (!(await p.$('.state-tabs'))) throw new Error('no repository open - run `repo <owner/repo>` first')
     const labels = { open: '打开的', merged: '已合并', closed: '已关闭', all: '全部' }
-    if (state) await p.click(`.state-tabs button:has-text("${labels[state]}")`)
-    await p.waitForFunction(() => !document.body.textContent.includes('正在通过 gh 读取 PR'), null, { timeout: 60_000 })
+    if (state) {
+      await p.click(`.state-tabs >> text="${labels[state]}"`)
+      await p.waitForTimeout(150)
+    }
+    await p.waitForFunction(() => document.querySelector('.pr-count') || document.body.innerText.includes('读取 PR 列表失败'), null, { timeout: 60_000 })
     const rows = await p.evaluate(() => [
-      document.querySelector('.state-tabs .muted')?.textContent ?? document.querySelector('.repo-page .error, .repo-page p')?.textContent,
+      document.querySelector('.pr-count')?.textContent ?? document.body.innerText.match(/读取 PR 列表失败.*/)?.[0],
       ...[...document.querySelectorAll('.pr-item')].slice(0, 8).map((b) => b.innerText.replace(/\n/g, '  ')),
     ])
     rows.forEach((r) => console.log(' ', r))
@@ -97,21 +120,14 @@ const COMMANDS = {
     const item = p.locator(`.pr-item[data-number="${number}"]`)
     if (!(await item.count())) throw new Error(`PR #${number} is not in the list - try \`prs all\``)
     await item.click()
-    await p.waitForSelector('.review-header, .page-message .error', { timeout: 120_000 })
-    const error = await p.$('.page-message .error')
-    console.log(error ? `open failed: ${await error.textContent()}` : `opened: ${await p.textContent('.review-title')}`)
+    await waitForReview()
   },
 
-  /** Open a PR from the home page URL box and wait for the chunked diff to render. */
+  /** Paste a PR link into the home input and wait for the chunked diff to render. */
   async open(url) {
-    const p = need()
     if (!url) throw new Error('usage: open <PR URL>')
-    if (!(await p.$('.home'))) await COMMANDS.home()
-    await p.fill('.open-form input', url)
-    await p.click('.open-form button')
-    await p.waitForSelector('.review-header, .page-message .error', { timeout: 120_000 })
-    const error = await p.$('.page-message .error')
-    console.log(error ? `open failed: ${await error.textContent()}` : `opened: ${await p.textContent('.review-title')}`)
+    await submitHome(url)
+    await waitForReview()
   },
 
   /** Wait until Jev has judged every unit (or failed). Optional timeout in seconds, default 120. */
@@ -128,15 +144,15 @@ const COMMANDS = {
 
   /** File list with per-category line counts, as shown in the left column. */
   async files() {
-    const rows = await need().evaluate(() =>
-      [...document.querySelectorAll('.file-list button')].map((b) => `${b.querySelector('.file-name')?.textContent}  ${b.querySelector('.file-counts')?.textContent}`),
-    )
+    const rows = await need().evaluate(() => [...document.querySelectorAll('.file-list-item')].map((item) => item.innerText.replace(/\n/g, '  ')))
     rows.forEach((r) => console.log(' ', r))
   },
 
+  /** Toggle 只看核心 with its keyboard shortcut C (focus is moved off any input first). */
   async 'core-only'() {
     const p = await needReview()
-    await p.click('.toggle input')
+    await p.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur())
+    await p.keyboard.press('c')
     await p.waitForTimeout(300)
     console.log('core only:', await p.isChecked('.toggle input'), '- folds:', await p.locator('.fold').count())
   },
@@ -181,23 +197,27 @@ const COMMANDS = {
     console.log(`explanation for ${id}: ${text}`)
   },
 
-  /** Click "back" until the home page shows (a review goes back to its repository first). */
   async home() {
-    const p = need()
-    for (let i = 0; i < 3 && !(await p.$('.home')); i++) {
-      await p.click('.review-header .link, .page-header .link, .page-message button')
-      await p.waitForTimeout(200)
-    }
-    await p.waitForSelector('.home')
-    console.log('at home:', await p.evaluate(() => document.querySelector('.home')?.innerText.split('\n').slice(0, 6).join(' | ')))
+    await goto('#/')
+    await waitForHome()
+    console.log('at home:', await homeSummary())
   },
 
   async settings() {
     const p = need()
-    if (!(await p.$('.home'))) await COMMANDS.home()
-    await p.click('.home-header .link')
-    await p.waitForSelector('.settings form')
+    await goto('#/settings')
+    await p.waitForFunction(() => document.querySelectorAll('.settings input').length > 0, null, { timeout: 20_000 })
     console.log('settings:', await p.evaluate(() => [...document.querySelectorAll('.settings input')].map((i) => `${i.value || i.placeholder}`).join(' | ')))
+  },
+
+  /** Force the color scheme (light|dark|system); Astryx and the diff colors follow it. */
+  async theme(source) {
+    if (!app) throw new Error('launch first')
+    await app.evaluate(({ nativeTheme }, value) => (nativeTheme.themeSource = value), source || 'system')
+    // Playwright emulates prefers-color-scheme itself (light by default), which masks nativeTheme.
+    await need().emulateMedia({ colorScheme: source === 'dark' || source === 'light' ? source : null })
+    await need().waitForTimeout(300)
+    console.log('theme:', source || 'system', '- dark:', await need().evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches))
   },
 
   async click(selector) {

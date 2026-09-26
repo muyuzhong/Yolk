@@ -23,7 +23,9 @@ npm run build    # 构建到 out/
 npm start        # 预览构建结果
 ```
 
-在首页选一个仓库（也可以输入 `owner/repo`、仓库链接，或者直接粘贴 PR 链接），再从仓库的 PR 列表里选一个 PR。
+在首页选一个仓库（也可以输入 `owner/repo`、仓库链接，或者直接粘贴 PR 链接），再从仓库的 PR 列表里选一个 PR。审阅页里按 C 切换"只看核心"，鼠标侧键或 Alt+←/→ 前进后退。
+
+界面基于 [Astryx](https://github.com/facebook/astryx) 设计系统。改界面前可以用它的 CLI 查组件：`npx astryx build "<想做的页面>"`、`npx astryx --dense component <组件名>`。
 
 仓库 base 分支里如果有 `.yolk.md`（项目约定），约定排除的代码会标上 ✂。
 

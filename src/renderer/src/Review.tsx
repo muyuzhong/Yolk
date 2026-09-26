@@ -1,14 +1,36 @@
+import { Button } from '@astryxdesign/core/Button'
+import { Center } from '@astryxdesign/core/Center'
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
+import { EmptyState } from '@astryxdesign/core/EmptyState'
+import { Heading } from '@astryxdesign/core/Heading'
+import { HStack } from '@astryxdesign/core/HStack'
+import { Icon } from '@astryxdesign/core/Icon'
+import { Kbd } from '@astryxdesign/core/Kbd'
+import { Layout, LayoutContent, LayoutHeader, LayoutPanel } from '@astryxdesign/core/Layout'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { Markdown } from '@astryxdesign/core/Markdown'
+import { ProgressBar } from '@astryxdesign/core/ProgressBar'
+import { Spinner } from '@astryxdesign/core/Spinner'
+import { Switch } from '@astryxdesign/core/Switch'
+import { Text } from '@astryxdesign/core/Text'
+import { VStack } from '@astryxdesign/core/VStack'
+import { CircleAlert, CircleCheck, FileWarning, ScrollText } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Judgment } from '../../core/judgment'
 import type { ReviewStart } from '../../shared/api'
 import { DiffFile, type Hover } from './DiffFile'
 import { errorMessage, LABEL, SHOWN } from './labels'
-import { blockStates, lineCounts } from './rows'
+import { navigate, pullRequestUrl } from './route'
+import { blockStates, lineCounts, type Category } from './rows'
 import { Tooltip, type Explanation } from './Tooltip'
 
 type Status = { state: 'judging' } | { state: 'done'; model: string; inputTokens: number } | { state: 'error'; message: string }
 
-export function Review({ url, onBack }: { url: string; onBack: () => void }) {
+const isTyping = (target: EventTarget | null) => target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
+
+export function Review({ repo, number }: { repo: string; number: number }) {
+  const url = pullRequestUrl(repo, number)
+  const [attempt, setAttempt] = useState(0)
   const [review, setReview] = useState<ReviewStart>()
   const [loadError, setLoadError] = useState<string>()
   const [judgments, setJudgments] = useState<Record<number, Record<string, Judgment>>>({})
@@ -18,6 +40,7 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
   const [coreOnly, setCoreOnly] = useState(false)
   const [showPolicy, setShowPolicy] = useState(false)
   const [hover, setHover] = useState<Hover>()
+  const [activeFile, setActiveFile] = useState(0)
   const [llmReady, setLlmReady] = useState(false)
   const [explanations, setExplanations] = useState<Record<string, Explanation>>({})
   const reviewIdRef = useRef('')
@@ -29,6 +52,12 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
   useEffect(() => {
     const reviewId = crypto.randomUUID()
     reviewIdRef.current = reviewId
+    setReview(undefined)
+    setLoadError(undefined)
+    setJudgments({})
+    setUnitErrors({})
+    setJudgedUnits(0)
+    setStatus({ state: 'judging' })
     const unsubscribe = window.yolk.onReviewProgress((progress) => {
       if (progress.reviewId !== reviewId) return
       if (progress.type === 'unit') {
@@ -44,19 +73,24 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
       unsubscribe()
       window.yolk.cancelReview(reviewId)
     }
-  }, [url])
+  }, [url, attempt])
 
   const judgmentError = status.state === 'error' ? status.message : undefined
   const states = useMemo(
     () => review?.files.map((file, i) => blockStates(file, judgments[i] ?? {}, unitErrors[i] ?? {}, judgmentError)) ?? [],
     [review, judgments, unitErrors, judgmentError],
   )
+  const counts = useMemo(() => review?.files.map((file, i) => lineCounts(file, states[i])) ?? [], [review, states])
+  const totals = useMemo(() => {
+    const sum: Partial<Record<Category, number>> = {}
+    for (const c of counts) for (const [category, n] of Object.entries(c) as [Category, number][]) sum[category] = (sum[category] ?? 0) + n
+    return sum
+  }, [counts])
   // Units with at least one block that goes to Jev (test blocks do not).
   const totalUnits = useMemo(
     () =>
       review?.files.reduce(
-        (sum, file) =>
-          sum + (file.chunks?.units.filter((u) => u.blocks.some((b) => !file.testBlocks?.includes(b))).length ?? 0),
+        (sum, file) => sum + (file.chunks?.units.filter((u) => u.blocks.some((b) => !file.testBlocks?.includes(b))).length ?? 0),
         0,
       ) ?? 0,
     [review],
@@ -88,104 +122,132 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
     }
   }, [hoverKey, llmReady])
 
+  // C toggles "core only" anywhere on the page except while typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target)) setCoreOnly((v) => !v)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // The file list follows the first file visible in the diff.
+  useEffect(() => {
+    if (!review) return
+    const visible = new Set<number>()
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const index = Number((entry.target as HTMLElement).dataset.index)
+        if (entry.isIntersecting) visible.add(index)
+        else visible.delete(index)
+      }
+      if (visible.size) setActiveFile(Math.min(...visible))
+    })
+    document.querySelectorAll<HTMLElement>('section.file').forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [review])
+
   if (loadError) {
     return (
-      <div className="page-message">
-        <p className="error">打开 PR 失败：{loadError}</p>
-        <button onClick={onBack}>返回</button>
-      </div>
+      <Center>
+        <EmptyState
+          icon={<Icon icon={FileWarning} size="lg" />}
+          title="打开 PR 失败"
+          description={loadError}
+          actions={
+            <>
+              <Button label="返回仓库" onClick={() => navigate({ page: 'repo', repo })} />
+              <Button variant="primary" label="重试" onClick={() => setAttempt((n) => n + 1)} />
+            </>
+          }
+        />
+      </Center>
     )
   }
-  if (!review) return <div className="page-message muted">正在读取 PR、切分代码块…</div>
+  if (!review) {
+    return (
+      <Center>
+        <Spinner size="lg" label="正在读取 PR，切分代码块…" />
+      </Center>
+    )
+  }
 
   const { pr, files, policy } = review
-  const hovered = hover && review.files[hover.file]
+  const hovered = hover && files[hover.file]
   return (
-    <div className="review">
-      <header className="review-header">
-        <button className="link" onClick={onBack}>
-          ◀ 返回
-        </button>
-        <div className="review-title">
-          <a href={pr.url} target="_blank" rel="noreferrer">
-            {pr.owner}/{pr.repo} #{pr.number}
-          </a>
-          <span>{pr.title}</span>
-        </div>
-        <div className="legend">
-          {SHOWN.map((c) => (
-            <span key={c} className={`chip cat-${c}`}>
-              {LABEL[c]}
-            </span>
-          ))}
-        </div>
-        <label className="toggle">
-          <input type="checkbox" checked={coreOnly} onChange={(e) => setCoreOnly(e.target.checked)} />
-          只看核心
-        </label>
-        <button className={showPolicy ? 'link active' : 'link'} onClick={() => setShowPolicy((v) => !v)}>
-          约定 {showPolicy ? '▾' : '▸'}
-        </button>
-        <span className="status muted">
-          {status.state === 'judging' && `Jev 判断中 ${judgedUnits}/${totalUnits}`}
-          {status.state === 'done' && `判断完成 · ${status.model || 'jev'} · ${(status.inputTokens / 1000).toFixed(1)}k token`}
-          {status.state === 'error' && <span className="error">判断失败：{status.message}</span>}
-        </span>
-      </header>
-      {showPolicy && (
-        <div className="policy">
-          {policy ? (
-            <>
-              <div className="muted">base 分支的 .yolk.md</div>
-              <pre>{policy}</pre>
-            </>
-          ) : (
-            <div className="muted">base 分支没有 .yolk.md，不会标 ✂（建议删除）。</div>
-          )}
-        </div>
-      )}
-      <div className="review-body">
-        <nav className="file-list">
-          {files.map((file, i) => {
-            const counts = lineCounts(file, states[i])
-            const name = file.diff.path.split('/').pop()
-            const dir = file.diff.path.slice(0, -name!.length)
-            return (
-              <button key={file.diff.path} onClick={() => document.getElementById(`file-${i}`)?.scrollIntoView()}>
-                <span className="file-name">
-                  <span className="muted">{dir}</span>
-                  {name}
-                </span>
-                <span className="file-counts">
-                  {file.skipped ? (
-                    <span className="muted">{file.skipped}</span>
-                  ) : (
-                    SHOWN.filter((c) => counts[c]).map((c) => (
-                      <span key={c} className={`count cat-${c}`}>
-                        {LABEL[c]} {counts[c]}
-                      </span>
-                    ))
-                  )}
-                </span>
-              </button>
-            )
-          })}
-        </nav>
-        <main className="files" onMouseLeave={() => onHover(undefined)}>
-          {files.map((file, i) => (
-            <DiffFile
-              key={file.diff.path}
-              index={i}
-              file={file}
-              states={states[i]}
-              unitErrors={unitErrors[i]}
-              coreOnly={coreOnly}
-              hoveredBlock={hover?.file === i ? hover.block : undefined}
-              onHover={onHover}
-            />
-          ))}
-        </main>
-      </div>
+    <>
+      <Layout
+        header={
+          <LayoutHeader hasDivider>
+            <VStack gap={2} padding={4} className="review-header">
+              <HStack gap={2}>
+                <Heading level={1} maxLines={1}>
+                  {pr.title}
+                </Heading>
+              </HStack>
+              <HStack gap={3} className="review-toolbar">
+                <Text type="supporting" className="review-title">
+                  {repo} #{pr.number} · {files.length} 个文件
+                </Text>
+                <span className="spacer" />
+                <HStack gap={1.5} className="legend">
+                  {SHOWN.map((c) => (
+                    <span key={c} className={`legend-item cat-${c}`}>
+                      {LABEL[c]} {totals[c] ?? 0}
+                    </span>
+                  ))}
+                </HStack>
+                <HStack gap={1} className="toggle">
+                  <Switch size="sm" label="只看核心" value={coreOnly} onChange={setCoreOnly} />
+                  <Kbd keys="c" />
+                </HStack>
+                <Button size="sm" variant="ghost" label="项目约定" icon={<Icon icon={ScrollText} size="sm" />} onClick={() => setShowPolicy(true)} />
+                <JudgeStatus status={status} judged={judgedUnits} total={totalUnits} />
+              </HStack>
+            </VStack>
+          </LayoutHeader>
+        }
+        start={
+          <LayoutPanel width={300} hasDivider label="文件" padding={2}>
+            <List density="compact" className="file-list">
+              {files.map((file, i) => {
+                const name = file.diff.path.split('/').pop()!
+                const dir = file.diff.path.slice(0, -name.length)
+                return (
+                  <ListItem
+                    key={file.diff.path}
+                    className="file-list-item"
+                    label={name}
+                    description={file.skipped ? `${dir}${dir ? ' · ' : ''}${file.skipped}` : dir || undefined}
+                    isSelected={i === activeFile}
+                    endContent={<FileCounts counts={counts[i]} />}
+                    onClick={() => document.getElementById(`file-${i}`)?.scrollIntoView({ block: 'start' })}
+                  />
+                )
+              })}
+            </List>
+          </LayoutPanel>
+        }
+        content={
+          <LayoutContent padding={0}>
+            <div className="files" onMouseLeave={() => onHover(undefined)}>
+              {files.map((file, i) => (
+                <DiffFile
+                  key={file.diff.path}
+                  index={i}
+                  file={file}
+                  states={states[i]}
+                  counts={counts[i]}
+                  unitErrors={unitErrors[i]}
+                  coreOnly={coreOnly}
+                  hoveredBlock={hover?.file === i ? hover.block : undefined}
+                  onHover={onHover}
+                />
+              ))}
+            </div>
+          </LayoutContent>
+        }
+      />
       {hover && hovered && (
         <Tooltip
           hover={hover}
@@ -197,6 +259,66 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
           explanation={hoverKey ? explanations[hoverKey] : undefined}
         />
       )}
-    </div>
+      <Dialog isOpen={showPolicy} onOpenChange={setShowPolicy} width={640}>
+        <DialogHeader title="项目约定" subtitle="读取自 base 分支的 .yolk.md" onOpenChange={setShowPolicy} />
+        <div className="policy">
+          {policy ? (
+            <Markdown density="compact">{policy}</Markdown>
+          ) : (
+            <EmptyState
+              isCompact
+              icon={<Icon icon={ScrollText} size="lg" />}
+              title="这个仓库还没有 .yolk.md"
+              description="在仓库根目录写一份项目约定，例如「MVP 阶段不需要重试和降级」，Jev 会据此标出建议删除（✂）的代码。"
+            />
+          )}
+        </div>
+      </Dialog>
+    </>
+  )
+}
+
+function JudgeStatus({ status, judged, total }: { status: Status; judged: number; total: number }) {
+  if (status.state === 'error') {
+    return (
+      <HStack gap={1} className="status">
+        <Icon icon={CircleAlert} size="sm" color="error" />
+        <Text type="supporting" color="inherit" maxLines={1} className="status-error">
+          判断失败：{status.message}
+        </Text>
+      </HStack>
+    )
+  }
+  if (status.state === 'done') {
+    return (
+      <HStack gap={1} className="status">
+        <Icon icon={CircleCheck} size="sm" color="success" />
+        <Text type="supporting">
+          判断完成 · {status.model || 'jev'} · {(status.inputTokens / 1000).toFixed(1)}k token
+        </Text>
+      </HStack>
+    )
+  }
+  return (
+    <HStack gap={2} className="status">
+      <Text type="supporting">
+        Jev 判断中 {judged}/{total}
+      </Text>
+      <span className="status-progress">
+        <ProgressBar label="Jev 判断进度" isLabelHidden value={judged} max={Math.max(total, 1)} />
+      </span>
+    </HStack>
+  )
+}
+
+function FileCounts({ counts }: { counts: Partial<Record<Category, number>> }) {
+  return (
+    <span className="file-counts">
+      {SHOWN.filter((c) => counts[c]).map((c) => (
+        <span key={c} className={`count cat-${c}`} title={`${LABEL[c]} ${counts[c]} 行`}>
+          {counts[c]}
+        </span>
+      ))}
+    </span>
   )
 }
