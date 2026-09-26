@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:web": "vite --config vite.web.config.ts",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "chunk": "tsx scripts/chunk.ts",
     "judge": "tsx scripts/judge.ts",
+    "capture": "tsx scripts/capture.ts",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
