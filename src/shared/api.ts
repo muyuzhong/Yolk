@@ -1,6 +1,6 @@
 // The IPC surface between the main process and the renderer, exposed as `window.yolk`.
 import type { FileResult, UnitResult } from '../core/analyze'
-import type { PullRequest, PullRequestSummary } from '../core/sources/gh'
+import type { PullRequest, PullRequestState, PullRequestSummary, RepositorySummary } from '../core/sources/gh'
 
 /** API keys never leave the main process; the renderer only learns whether one is set. */
 export interface SettingsView {
@@ -15,9 +15,10 @@ export interface SettingsUpdate {
   llm: { baseURL: string; model: string; apiKey?: string }
 }
 
-export interface PullRequestLists {
-  reviewRequested: PullRequestSummary[]
-  authored: PullRequestSummary[]
+export interface PullRequestList {
+  /** The signed-in GitHub user, to mark PRs that ask them for a review. */
+  login: string
+  pullRequests: PullRequestSummary[]
 }
 
 export interface ReviewStart {
@@ -34,7 +35,8 @@ export type ReviewProgress =
 export interface YolkApi {
   getSettings(): Promise<SettingsView>
   saveSettings(update: SettingsUpdate): Promise<SettingsView>
-  listPullRequests(): Promise<PullRequestLists>
+  listRepositories(): Promise<RepositorySummary[]>
+  listPullRequests(repo: string, state: PullRequestState): Promise<PullRequestList>
   /** Chunks the PR and returns it; judgments then arrive through `onReviewProgress` tagged with `reviewId`. */
   startReview(url: string, reviewId: string): Promise<ReviewStart>
   cancelReview(reviewId: string): void

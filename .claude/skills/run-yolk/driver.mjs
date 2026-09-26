@@ -66,6 +66,42 @@ const COMMANDS = {
     console.log('screenshot:', file)
   },
 
+  /** Open a repository from the home page input and list its open PRs. */
+  async repo(name) {
+    const p = need()
+    if (!name) throw new Error('usage: repo <owner/repo>')
+    if (!(await p.$('.home'))) await COMMANDS.home()
+    await p.fill('.open-form input', name)
+    await p.press('.open-form input', 'Enter')
+    await p.waitForSelector('.repo-page')
+    await COMMANDS.prs()
+  },
+
+  /** Switch the repository page to a PR state (open|merged|closed|all) and print the list. */
+  async prs(state) {
+    const p = need()
+    if (!(await p.$('.repo-page'))) throw new Error('no repository open - run `repo <owner/repo>` first')
+    const labels = { open: '打开的', merged: '已合并', closed: '已关闭', all: '全部' }
+    if (state) await p.click(`.state-tabs button:has-text("${labels[state]}")`)
+    await p.waitForFunction(() => !document.body.textContent.includes('正在通过 gh 读取 PR'), null, { timeout: 60_000 })
+    const rows = await p.evaluate(() => [
+      document.querySelector('.state-tabs .muted')?.textContent ?? document.querySelector('.repo-page .error, .repo-page p')?.textContent,
+      ...[...document.querySelectorAll('.pr-item')].slice(0, 8).map((b) => b.innerText.replace(/\n/g, '  ')),
+    ])
+    rows.forEach((r) => console.log(' ', r))
+  },
+
+  /** Open PR #n from the repository page list. */
+  async pr(number) {
+    const p = need()
+    const item = p.locator(`.pr-item[data-number="${number}"]`)
+    if (!(await item.count())) throw new Error(`PR #${number} is not in the list - try \`prs all\``)
+    await item.click()
+    await p.waitForSelector('.review-header, .page-message .error', { timeout: 120_000 })
+    const error = await p.$('.page-message .error')
+    console.log(error ? `open failed: ${await error.textContent()}` : `opened: ${await p.textContent('.review-title')}`)
+  },
+
   /** Open a PR from the home page URL box and wait for the chunked diff to render. */
   async open(url) {
     const p = need()
@@ -145,12 +181,15 @@ const COMMANDS = {
     console.log(`explanation for ${id}: ${text}`)
   },
 
+  /** Click "back" until the home page shows (a review goes back to its repository first). */
   async home() {
     const p = need()
-    if (await p.$('.home')) return console.log('at home')
-    await p.click('.review-header .link, .page-header .link, .page-message button')
+    for (let i = 0; i < 3 && !(await p.$('.home')); i++) {
+      await p.click('.review-header .link, .page-header .link, .page-message button')
+      await p.waitForTimeout(200)
+    }
     await p.waitForSelector('.home')
-    console.log('at home')
+    console.log('at home:', await p.evaluate(() => document.querySelector('.home')?.innerText.split('\n').slice(0, 6).join(' | ')))
   },
 
   async settings() {

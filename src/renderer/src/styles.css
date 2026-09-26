@@ -131,8 +131,9 @@ pre {
   font-size: 12px;
 }
 
-/* Home and settings */
+/* Home, repository and settings */
 .home,
+.repo-page,
 .settings {
   max-width: 880px;
   margin: 0 auto;
@@ -176,9 +177,69 @@ pre {
   border-radius: 6px;
   padding: 6px 16px;
 }
-.pr-list h2 {
+.repo-list h2 {
   font-size: 15px;
   margin: 24px 0 8px;
+}
+.repo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 4px;
+}
+.repo-item:hover {
+  background: var(--panel);
+}
+.repo-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+.repo-page h1 {
+  font-size: 20px;
+}
+.state-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0 12px;
+}
+.state-tabs button {
+  border: 1px solid var(--border);
+  background: none;
+  border-radius: 14px;
+  padding: 3px 12px;
+}
+.state-tabs button.active {
+  background: var(--core-bg);
+  border-color: var(--core);
+}
+.state-tabs .muted {
+  margin-left: 8px;
+  font-size: 12px;
+}
+.tag.accent {
+  border-color: var(--core);
+  background: var(--core-bg);
+}
+.pr-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-weight: 500;
+}
+.additions {
+  color: var(--test);
+}
+.deletions {
+  color: var(--error);
 }
 .count {
   color: var(--muted);
@@ -197,9 +258,6 @@ pre {
 }
 .pr-item:hover {
   background: var(--panel);
-}
-.pr-title {
-  font-weight: 500;
 }
 .settings fieldset {
   border: 1px solid var(--border);

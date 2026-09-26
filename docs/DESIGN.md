@@ -27,7 +27,7 @@ v0.1 做成本地运行的桌面客户端。
 
 **跑通的标准：**
 
-- 打开客户端，在首页"待我审阅"列表里点一个 PR，或者直接粘贴 PR 链接。
+- 打开客户端，在首页选一个仓库（或者直接粘贴 PR 链接），进入仓库后从它的 PR 列表里点一个 PR。
 - 进入差异视图后：
   - 新增的代码按块标成三种颜色：核心、防御、支撑。颜色随判断结果陆续出现，逐步铺满。
   - 模型拿不准的块，颜色画淡一些，并加一个"?"。
@@ -47,7 +47,7 @@ Electron
  │   ├─ 通用模型：悬停解释
  │   └─ 设置：API key 用 safeStorage 加密（系统钥匙串）
  ├─ preload：通过 IPC 只暴露有限的几个接口
- └─ 渲染进程（React）：首页（PR 列表）、差异视图、设置页
+ └─ 渲染进程（React）：首页（选仓库）、仓库页（PR 列表）、差异视图、设置页
 ```
 
 API key 只在主进程里使用，不会传到渲染进程。
@@ -57,7 +57,7 @@ API key 只在主进程里使用，不会传到渲染进程。
 ```
 src/
   core/            与界面无关，以后做 GitHub Action 时可以复用
-    sources/gh.ts  gh pr view / gh pr diff / gh api / gh search prs
+    sources/gh.ts  gh pr view / gh pr diff / gh pr list / gh api
     diff.ts        把 unified diff 解析成行列表（新增 / 删除 / 上下文，附新旧行号）
     chunk.ts       tree-sitter 切块 + 划分判断单元
     languages.ts   文件扩展名 → 语言 → 语法文件、tags.scm、例外表（见 6.3）
@@ -67,7 +67,7 @@ src/
     analyze.ts     把上面串起来：PR → 代码块 → 判断结果（每判断完一个单元就推送一次）
   main/            Electron 主进程：窗口、IPC、设置存储
   preload/
-  renderer/        React：首页、差异视图、设置页
+  renderer/        React：首页、仓库页、差异视图、设置页
 scripts/           开发用脚本：在终端打印切块和判断结果，用来调规则
 ```
 
@@ -75,7 +75,9 @@ scripts/           开发用脚本：在终端打印切块和判断结果，用�
 
 | 用途 | 命令 |
 |---|---|
-| 待我审阅的 PR | `gh search prs --review-requested=@me --state=open --json number,title,repository,url,author,updatedAt` |
+| 我的仓库 | `gh api "user/repos?affiliation=owner,collaborator,organization_member&sort=pushed&per_page=100"`（取最近推送的 100 个，已归档的不显示） |
+| 仓库的 PR 列表 | `gh pr list -R <repo> --state <open\|merged\|closed\|all> --limit 100 --json number,title,url,author,updatedAt,state,isDraft,additions,deletions,reviewDecision,reviewRequests` |
+| 当前登录用户 | `gh api user --jq .login`，用来标出"请你审阅"的 PR；只查一次 |
 | PR 元信息 | `gh pr view <URL> --json number,title,body,url,baseRefOid,headRefOid,headRepository,headRepositoryOwner` |
 | diff | `gh pr diff <URL>` |
 | 文件完整内容 | `gh api repos/{head_owner}/{head_repo}/contents/{path}?ref={headRefOid} -H "Accept: application/vnd.github.raw"` |
@@ -277,9 +279,23 @@ M2 实测时，测试代码几乎全被判为支撑，hono 的测试文件 53 �
 
 ## 8. 界面
 
+### 选仓库
+
+审阅从仓库开始，而不是从单个 PR 开始：
+
+- **首页：** 上面是"最近打开"的仓库（记在本机，最多 8 个）；下面是"我的仓库"，包括自己的、参与协作的和所在组织的仓库，按最近推送时间排序。顶部只有一个输入框：
+  - 输入文字：筛选下面的列表；
+  - 输入 `owner/repo` 或仓库链接后回车：进入该仓库，不在列表里的公开仓库也可以；
+  - 粘贴 PR 链接后回车：直接打开这个 PR；
+  - GitHub Enterprise 的链接会保留主机名，按 `gh -R HOST/OWNER/REPO` 的格式使用。
+- **仓库页：** PR 列表可以按状态切换：打开的、已合并、已关闭、全部，每次最多 100 个。每行显示标题、作者、更新时间和增删行数，以及"草稿""已合并""已关闭""请你审阅""已批准""需修改"这些标记。
+- **返回：** 从审阅页先返回到仓库页，再返回到首页。仓库列表在一次运行期间只查询一次，所以回到首页不用等。
+
+### 审阅页
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ ◀ 待我审阅(3)   owner/repo #123 Fix user lookup   [只看核心 ○]  约定▸ ⚙ │
+│ ◀ 返回   owner/repo #123 Fix user lookup          [只看核心 ○]  约定▸ ⚙ │
 ├──────────────────┬───────────────────────────────────────────────────┤
 │ src/api/user.ts  │ ▌+ async function getUser(id) {                   │ 琥珀色 = 核心
 │  核12 防9 撑3     │ ▌+   if (!id) throw new Error(...)          ✂     │ 蓝色 = 防御
@@ -303,7 +319,7 @@ M2 实测时，测试代码几乎全被判为支撑，hono 的测试文件 53 �
 1. **M1 切块（已完成）：** `npm run chunk -- <PR 链接>` 在终端打印块边界和判断单元，`npm test` 跑切块测试。已在 Python（flask）、Rust（axum）、TypeScript（hono）的真实 PR 上调过规则。
 2. **M2 Jev 判断（已完成）：** `npm run judge -- <PR 链接> [--convention <约定文件>]` 在终端按颜色和置信度输出结果。在 hono、flask、axum、vellum-assistant 四个 PR 上验证过：每个 PR 约 6k～33k 个输入 token、端到端 4～10 秒；中英文约定的效果一致，不需要翻译。
 3. **M3 客户端（已完成）：** 包括 Electron 外壳、设置页、首页和三色差异视图。
-   - **首页：** 有"待我审阅"和"我创建的"两个 PR 列表，也可以直接粘贴 PR 链接。"我创建的"是计划之外加的：作者提 PR 前可以自己先审一遍。
+   - **首页：** 最初是"待我审阅"和"我创建的"两个 PR 列表，后来按使用反馈改成先选仓库，见第 8 节"选仓库"。
    - **差异视图：** 支持"只看核心"折叠，拿不准的块画淡并加"?"，被约定排除的块标 ✂（原计划在 M4 做，因为判断结果里已有这个数据，就提前做了），测试代码显示为绿色。每个单元判断完就先上色，不用等全部结果。
    - **显示细节：** 夹在两行同类代码之间的空行也用同一种颜色，色带不会被截断；折叠提示里的行数不计空行。
    - **悬停浮层：** 目前显示 Jev 给出的三类概率，以及约定排除的概率。
