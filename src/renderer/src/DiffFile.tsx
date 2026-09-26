@@ -104,7 +104,8 @@ export const DiffFile = memo(function DiffFile({ index, file, states, counts, un
                 row={row}
                 tokens={tokens?.get(row.key)}
                 hovered={row.block !== undefined && row.block === hoveredBlock}
-                onEnter={(e) => onHover(row.block ? { file: index, block: row.block, x: e.clientX, y: e.clientY } : undefined)}
+                fileIndex={index}
+                onHover={onHover}
               />
             )
           })}
@@ -116,8 +117,25 @@ export const DiffFile = memo(function DiffFile({ index, file, states, counts, un
 
 const SIGN = { add: '+', del: '−', ctx: ' ' }
 
-function Line({ row, tokens, hovered, onEnter }: { row: LineRow; tokens?: ThemedToken[]; hovered: boolean; onEnter: (e: React.MouseEvent) => void }) {
+/**
+ * One diff line. Memoized with only stable props, so moving the mouse between blocks re-renders just the lines that
+ * gain or lose the hover highlight, not every highlighted token of the file.
+ */
+const Line = memo(function Line({
+  row,
+  tokens,
+  hovered,
+  fileIndex,
+  onHover,
+}: {
+  row: LineRow
+  tokens?: ThemedToken[]
+  hovered: boolean
+  fileIndex: number
+  onHover: (hover: Hover | undefined) => void
+}) {
   const { line } = row
+  const onEnter = (e: React.MouseEvent) => onHover(row.block ? { file: fileIndex, block: row.block, x: e.clientX, y: e.clientY } : undefined)
   const classes = ['line', line.kind, `cat-${row.category}`, row.unsure && 'unsure', hovered && 'hovered'].filter(Boolean).join(' ')
   const mark = row.firstOfBlock ? `${row.cut ? '✂' : ''}${row.unsure ? '?' : ''}` : ''
   return (
@@ -137,4 +155,4 @@ function Line({ row, tokens, hovered, onEnter }: { row: LineRow; tokens?: Themed
       </code>
     </div>
   )
-}
+})

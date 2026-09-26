@@ -63,7 +63,10 @@ export interface YolkApi {
   /** Chunks the PR and returns it; judgments then arrive through `onReviewProgress` tagged with `reviewId`. */
   startReview(url: string, reviewId: string): Promise<ReviewStart>
   cancelReview(reviewId: string): void
-  /** A short Chinese explanation of one block from the general model; cached in the main process. */
-  explainBlock(reviewId: string, fileIndex: number, blockId: string): Promise<string>
+  /**
+   * A short Chinese explanation of one judgment unit (a function, or top-level changes) from the general model:
+   * what it does as a whole, then its key lines by category. Asked for on demand; cached in the main process.
+   */
+  explainUnit(reviewId: string, fileIndex: number, unitId: string): Promise<string>
   onReviewProgress(listener: (progress: ReviewProgress) => void): () => void
 }

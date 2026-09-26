@@ -86,17 +86,27 @@ async function judgeInBackground(sender: WebContents, reviewId: string, { pr, fi
   }
 }
 
-async function explainBlock(sender: WebContents, reviewId: string, fileIndex: number, blockId: string): Promise<string> {
+/** Explains a whole judgment unit (a function, or top-level changes) with each block's category, on request. */
+async function explainUnit(sender: WebContents, reviewId: string, fileIndex: number, unitId: string): Promise<string> {
   const review = shown.get(sender.id)
   if (review?.reviewId !== reviewId) throw new Error('这个审阅已经关闭')
   const { signal } = reviews.get(sender.id)!.controller
   const file = review.files[fileIndex]
-  const block = file.chunks!.blocks.find((b) => b.id === blockId)!
-  const unit = file.chunks!.units.find((u) => u.id === block.unit)!
-  // judgeFiles merges judgments into these same file objects, so ✂ reflects what Jev has said so far.
-  const judgment = file.judgments?.[blockId]
-  const cut = judgment !== undefined && suggestsRemoval(judgment, (await loadSettings()).judging.thresholds)
-  const input = { pr: review.pr, path: file.diff.path, source: file.source!, unit, block, policy: cut ? review.policy : null }
+  const unit = file.chunks!.units.find((u) => u.id === unitId)!
+  const { thresholds } = (await loadSettings()).judging
+  // judgeFiles merges judgments into these same file objects, so roles and ✂ reflect what Jev has said so far.
+  const blocks = file.chunks!.blocks
+    .filter((block) => block.unit === unitId)
+    .map((block) => {
+      const judgment = file.judgments?.[block.id]
+      return {
+        block,
+        role: file.testBlocks?.includes(block.id) ? ('test' as const) : (judgment?.role ?? null),
+        cut: judgment !== undefined && suggestsRemoval(judgment, thresholds),
+      }
+    })
+  const policy = blocks.some((b) => b.cut) ? review.policy : null
+  const input = { pr: review.pr, path: file.diff.path, source: file.source!, unit, blocks, policy }
   const config = await llmConfig()
   signal.throwIfAborted()
   const key = JSON.stringify([config.baseURL, config.model, explainMessages(input)])
@@ -143,8 +153,8 @@ app.whenReady().then(() => {
     return { login: user, pullRequests }
   })
   ipcMain.handle('review:start', (event, url: string, reviewId: string) => startReview(event.sender, url, reviewId))
-  ipcMain.handle('review:explain', (event, reviewId: string, fileIndex: number, blockId: string) =>
-    explainBlock(event.sender, reviewId, fileIndex, blockId),
+  ipcMain.handle('review:explain', (event, reviewId: string, fileIndex: number, unitId: string) =>
+    explainUnit(event.sender, reviewId, fileIndex, unitId),
   )
   ipcMain.on('review:cancel', (event, reviewId: string) => {
     const review = reviews.get(event.sender.id)

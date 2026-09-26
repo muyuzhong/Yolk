@@ -1,6 +1,6 @@
 // Minimal OpenAI-compatible /v1/chat/completions server for exercising hover explanations
-// without a real model. The reply quotes the lines the prompt marked with `>>`, so it shows
-// which block the app asked about, and says whether the project convention was included.
+// without a real model. The reply names the unit the app asked about and counts its lines by
+// category, so it shows what was sent, and says whether the project convention was included.
 // Usage: node .claude/skills/run-yolk/mock-llm.mjs [port]   (default 8787)
 import { createServer } from 'node:http'
 
@@ -16,10 +16,14 @@ createServer((req, res) => {
     }
     const { model, messages } = JSON.parse(body)
     const prompt = messages.at(-1).content
-    const marked = prompt.split('\n').filter((line) => line.startsWith('>> ')).map((line) => line.slice(3).trim())
+    const unit = prompt.match(/^代码：(.*)$/m)?.[1] ?? '?'
+    // Code lines look like "12 核心　　| code": count them by category.
+    const counts = {}
+    for (const [, tag] of prompt.matchAll(/^\s*\d+ (\S*)[\s　]*\|/gm)) if (tag) counts[tag] = (counts[tag] ?? 0) + 1
+    const summary = Object.entries(counts).map(([tag, n]) => `${tag} ${n} 行`).join('、') || '没有判断结果'
     const policy = prompt.includes('项目约定：')
-    const text = `模拟解释（${model}）：标记了 ${marked.length} 行，第一行是「${marked[0]}」。${policy ? '请求里带了项目约定。' : ''}`
-    console.log(`[mock-llm] model=${model} marked=${marked.length} policy=${policy} first=${JSON.stringify(marked[0])}`)
+    const text = `模拟解释（${model}）：${unit}，${summary}。${policy ? '请求里带了项目约定。' : ''}`
+    console.log(`[mock-llm] model=${model} unit=${JSON.stringify(unit)} ${summary} policy=${policy}`)
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(
       JSON.stringify({

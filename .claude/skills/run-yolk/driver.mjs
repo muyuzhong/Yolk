@@ -184,24 +184,20 @@ const COMMANDS = {
     console.log('tooltip:', (await p.textContent('.tooltip').catch(() => null)) ?? '(none)')
   },
 
-  /** Hover the first line of a category and wait for the general model's explanation (up to 60 s). */
+  /**
+   * Hover the first line of a category, press E to ask for its unit's explanation, and wait for the general model's
+   * answer (up to 60 s). Explanations cover a whole unit (a function, or top-level changes) and are never automatic.
+   */
   async explain(category) {
     const p = await needReview()
     await COMMANDS['hover-block'](category)
+    await p.keyboard.press('e')
     await p.waitForFunction(
-      () => {
-        const text = document.querySelector('.tooltip .explanation')?.textContent ?? ''
-        return text && !text.includes('正在生成解释')
-      },
+      () => document.querySelector('.tooltip .explanation-text, .tooltip .explanation .tooltip-error'),
       null,
       { timeout: 60_000 },
     )
-    // Read block id and explanation together so a mismatch would show.
-    const [id, text] = await p.evaluate(() => [
-      document.querySelector('.tooltip .small')?.textContent,
-      document.querySelector('.tooltip .explanation')?.textContent,
-    ])
-    console.log(`explanation for ${id}: ${text}`)
+    console.log('explanation:', (await p.textContent('.tooltip .explanation'))?.trim())
   },
 
   async home() {
