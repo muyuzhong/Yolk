@@ -40,7 +40,8 @@ function printFile(file: FileResult) {
     console.log(`  ${unit.id} ${label}  L${unit.start}–${unit.end}  ${unit.blocks.join(' ')}`)
   }
   for (const block of chunks.blocks) {
-    console.log(dim(`  ${block.id} ${block.nodeType}  L${block.lines.join(',')}`))
+    const test = file.testBlocks?.includes(block.id) ? '  测试' : ''
+    console.log(dim(`  ${block.id} ${block.nodeType}  L${block.lines.join(',')}${test}`))
   }
   if (chunks.unowned.length) console.log(color(31, `  没有归属的新增行：${chunks.unowned.join(', ')}`))
   console.log()

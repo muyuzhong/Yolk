@@ -4,6 +4,7 @@ import { parseDiff, type FileDiff } from './diff'
 import { judgeUnit, type Judgment } from './jev'
 import { languageFor } from './languages'
 import { getConvention, getFileAt, getPullRequest, getPullRequestDiff, type PullRequest } from './sources/gh'
+import { inlineTestRanges, isTestPath } from './testcode'
 
 export interface FileResult {
   diff: FileDiff
@@ -13,6 +14,8 @@ export interface FileResult {
   source?: string[]
   /** Why the file is shown as a plain diff. */
   skipped?: string
+  /** Blocks of test code: labeled as tests, not judged, not folded. */
+  testBlocks?: string[]
   /** Jev judgments by block id. */
   judgments?: Record<string, Judgment>
   /** Errors by unit id; the unit's blocks stay unjudged. */
@@ -34,7 +37,12 @@ export async function chunkPullRequest(url: string): Promise<PullRequestChunks> 
     if (!spec) return { diff, skipped: '暂不支持的语言' }
     if (!hunks.some((h) => h.added.length)) return { diff, language: spec.id, skipped: '没有新增行' }
     const source = await getFileAt(pr, diff.path, pr.headSha)
-    return { diff, language: spec.id, chunks: await chunkFile(spec, source, hunks), source: source.split('\n') }
+    const chunks = await chunkFile(spec, source, hunks)
+    const testRanges = isTestPath(diff.path) ? null : await inlineTestRanges(spec, source)
+    const testBlocks = chunks.blocks
+      .filter((b) => testRanges === null || testRanges.some(([start, end]) => start <= b.lines[0] && b.lines[0] <= end))
+      .map((b) => b.id)
+    return { diff, language: spec.id, chunks, source: source.split('\n'), testBlocks }
   })
   return { pr, files }
 }
@@ -55,7 +63,8 @@ export async function judgePullRequest(url: string, options: { policy?: string }
 
   const tasks = files.flatMap((file) => file.chunks?.units.map((unit) => ({ file, unit })) ?? [])
   await mapLimit(tasks, 8, async ({ file, unit }) => {
-    const blocks = file.chunks!.blocks.filter((b) => b.unit === unit.id)
+    const blocks = file.chunks!.blocks.filter((b) => b.unit === unit.id && !file.testBlocks!.includes(b.id))
+    if (!blocks.length) return
     try {
       const result = await judgeUnit(client, { pr, policy, path: file.diff.path, source: file.source!, unit, blocks })
       file.judgments = { ...file.judgments, ...result.judgments }

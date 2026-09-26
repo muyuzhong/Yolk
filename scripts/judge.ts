@@ -16,6 +16,7 @@ if (!url) {
 
 const LABEL: Record<Role, string> = { core: '核心', defense: '防御', support: '支撑' }
 const COLOR: Record<Role, number> = { core: 33, defense: 34, support: 90 }
+const TEST_COLOR = 32
 
 const started = performance.now()
 const policy = conventionPath ? await readFile(conventionPath, 'utf8') : undefined
@@ -27,7 +28,7 @@ console.log(dim(`模型 ${result.model} · 输入 ${result.inputTokens} token ·
 for (const file of result.files) printFile(file)
 
 function printFile(file: FileResult) {
-  const { diff, chunks, judgments = {}, unitErrors = {} } = file
+  const { diff, chunks, judgments = {}, unitErrors = {}, testBlocks = [] } = file
   if (!chunks) {
     console.log(`━━ ${diff.path}  ${dim(`跳过：${file.skipped}`)}\n`)
     return
@@ -41,6 +42,7 @@ function printFile(file: FileResult) {
       const i = index.get(line.newNo!)
       if (i === undefined) return line.text.trim() ? { tag: '??', paint: 31 } : { tag: '', paint: null }
       const block = chunks.blocks[i]
+      if (testBlocks.includes(block.id)) return { tag: `${block.id.padEnd(4)}测试`, paint: TEST_COLOR }
       const j = judgments[block.id]
       if (!j) return { tag: `${block.id} 未判断`, paint: 31 }
       const unsure = isUnsure(j)
@@ -59,6 +61,7 @@ function printFile(file: FileResult) {
     const excluded = j.excluded === null ? '' : `  约定排除 ${j.excluded.toFixed(2)}${suggestsRemoval(j) ? ' ✂' : ''}`
     console.log(color(COLOR[j.role], `  ${block.id.padEnd(4)}${LABEL[j.role]} 置信度 ${j.confidence.toFixed(2)}  (${probs})${excluded}`))
   }
+  if (testBlocks.length) console.log(color(TEST_COLOR, `  测试代码 ${testBlocks.length} 块，不做判断`))
   for (const [unit, error] of Object.entries(unitErrors)) console.log(color(31, `  ${unit} 判断失败：${error}`))
   console.log()
 }

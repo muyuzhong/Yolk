@@ -26,6 +26,8 @@ export interface LangSpec {
   anonymousFunctions: string[]
   /** A function wrapped in one of these (e.g. decorators) extends to the wrapper. */
   wrappers: string[]
+  /** An attached node (attribute) matching this marks the item below as test code. */
+  testAttribute?: RegExp
 }
 
 const base = { extraUnits: [], notUnits: [], unitParents: [], collapse: [], wrappers: [], attachToNext: [], anonymousFunctions: [] }
@@ -61,6 +63,7 @@ const LANGS: Record<string, LangSpec> = {
     unitParents: ['block'],
     attachToNext: ['attribute_item'],
     anonymousFunctions: ['closure_expression'],
+    testAttribute: /^#\[(cfg\(test\)|(\w+::)*test(_case)?\b)/,
   },
 }
 
