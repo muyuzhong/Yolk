@@ -55,28 +55,20 @@
 }
 
 /* Repository page */
+/* PR size as colored counts. Addition/deletion colors: the data palette in light mode, the lighter border tints in dark. */
 .diffstat {
   white-space: nowrap;
-}
-.diffstat-numbers {
   font-family: var(--font-family-code);
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
+  --diffstat-add: light-dark(var(--color-data-categorical-green), var(--color-border-green));
+  --diffstat-del: light-dark(var(--color-data-categorical-red), var(--color-border-red));
 }
-/* Five pixel blocks, the same square grain as the dithered backdrop. */
-.diffstat-blocks {
-  height: var(--spacing-2);
-  aspect-ratio: 14 / 2;
-  shape-rendering: crispEdges;
+.diffstat .additions {
+  color: var(--diffstat-add);
 }
-.diffstat-block.add {
-  fill: var(--color-icon-green);
-}
-.diffstat-block.del {
-  fill: var(--color-icon-red);
-}
-.diffstat-block.none {
-  fill: var(--color-border);
+.diffstat .deletions {
+  color: var(--diffstat-del);
 }
 /* PR lifecycle in GitHub's colors: open green, draft gray, merged purple, closed red. */
 .pr-status {
