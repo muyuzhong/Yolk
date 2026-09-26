@@ -141,7 +141,8 @@ const Line = memo(function Line({
   const classes = ['line', line.kind, `cat-${row.category}`, row.unsure && 'unsure', hovered && 'hovered'].filter(Boolean).join(' ')
   const mark = row.firstOfBlock ? `${row.cut ? '✂' : ''}${row.unsure ? '?' : ''}` : ''
   return (
-    <div className={classes} onMouseEnter={onEnter}>
+    // Position data lets a mouse selection be mapped back to diff lines (see SelectionExplain).
+    <div className={classes} onMouseEnter={onEnter} data-kind={line.kind} data-old={line.oldNo ?? undefined} data-new={line.newNo ?? undefined}>
       <span className="num">{line.oldNo ?? ''}</span>
       <span className="num">{line.newNo ?? ''}</span>
       <span className="mark">{mark}</span>

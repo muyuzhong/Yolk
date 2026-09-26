@@ -93,6 +93,15 @@ export async function mockApi(): Promise<YolkApi> {
         '第 18 行是防御：这里会写它在防什么错误。',
       ].join('\n')
     },
+    explainSelection: async (_reviewId, fileIndex, lines) => {
+      await sleep(600)
+      const numbers = lines.flatMap((l) => (l.newNo === null ? [] : [l.newNo]))
+      const removed = lines.filter((l) => l.kind === 'del').length
+      return [
+        `（mock）第 ${fileIndex} 个文件里选中的 ${lines.length} 行${numbers.length ? `（第 ${Math.min(...numbers)}–${Math.max(...numbers)} 行）` : ''}：这里会说明它们在做什么。`,
+        removed ? `其中有 ${removed} 行是删掉的旧代码：这里会说明改了什么、为什么这样改。` : '选中部分没有删掉的代码。',
+      ].join('\n')
+    },
     onReviewProgress: (listener) => {
       listeners.add(listener)
       return () => listeners.delete(listener)

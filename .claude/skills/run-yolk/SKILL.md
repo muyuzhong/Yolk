@@ -132,6 +132,7 @@ profile in `/tmp/yolk-shots/userdata`, so `~/.config/yolk` is never touched.
 | `file <n\|last>` | scroll file n (0-based) into view |
 | `hover-block <core\|defense\|support\|test\|pending>` | hover the first line of that category, print the tooltip |
 | `explain <category>` | hover like `hover-block`, press E, wait for the general model's explanation of that block's unit and print it |
+| `explain-selection <from> <to>` | select new-version lines FROM..TO (like a mouse drag), press E, print the explanation of the selection |
 | `core-only` | toggle 只看核心 with its keyboard shortcut C, print how many fold rows exist |
 | `theme <light\|dark\|system>` | force the color scheme (Electron nativeTheme + Playwright media emulation) |
 | `home` / `repos` | navigate by setting the URL hash (`#/`, `#/repos`); pages are hash routes |

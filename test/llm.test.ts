@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { chunkFile } from '../src/core/chunk'
 import { languageById } from '../src/core/languages'
-import { explainMessages } from '../src/core/llm'
+import { explainMessages, explainSelectionMessages } from '../src/core/llm'
 
 const source = [
   'import { db } from "./db"',
@@ -41,4 +41,27 @@ test('the convention and the ✂ instruction come along only when a block in the
   assert.match(String(system.content), /约定为什么可能不需要它们/)
   assert.match(String(user.content), /^3 防御 ✂\|/m)
   assert.match(String(user.content), /项目约定：\n\nMVP: validate input only at API boundaries\.$/)
+})
+
+test('a selection is sent as its diff lines, with the units it touches as tagged context', async () => {
+  const chunks = await chunkFile(languageById('typescript'), source.join('\n'), [{ start: 1, end: 5, added: [2, 3, 4, 5] }])
+  const unit = chunks.units.find((u) => u.kind === 'function')!
+  const blocks = chunks.blocks.filter((b) => b.unit === unit.id).map((block) => ({ block, role: 'core' as const, cut: false }))
+  const [system, user] = explainSelectionMessages({
+    pr: { title: 'Add getUser' },
+    path: 'src/user.ts',
+    source,
+    lines: [
+      { kind: 'del', oldNo: 3, newNo: null, text: '  return cache.get(id);', role: null, cut: false },
+      { kind: 'add', oldNo: null, newNo: 4, text: '  return db.find(id);', role: 'core', cut: false },
+    ],
+    context: { start: unit.start, end: unit.end, blocks },
+    policy: null,
+  })
+  assert.match(String(system.content), /选中了几行代码/)
+  assert.match(String(system.content), /不超过 5 句/)
+  const content = String(user.content)
+  assert.match(content, /所在代码（新版本第 2–5 行）：\n\n2 核心　　\| async function getUser\(id\) \{/)
+  assert.match(content, /审阅者选中的部分：\n\n- 旧3 　　　　\|   return cache\.get\(id\);\n\+  4 核心　　\|   return db\.find\(id\);$/)
+  assert.doesNotMatch(content, /项目约定/)
 })

@@ -18,6 +18,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_THRESHOLDS, type Judgment } from '../../core/judgment'
 import type { ReviewStart } from '../../shared/api'
 import { DiffFile, type Hover } from './DiffFile'
+import { readSelection, SelectionExplain, type DiffSelection } from './SelectionExplain'
 import { errorMessage, LABEL, SHOWN } from './labels'
 import { openSettings, useSettingsDialog } from './settingsDialog'
 import { navigate, pullRequestUrl } from './route'
@@ -140,13 +141,58 @@ export function Review({ repo, number }: { repo: string; number: number }) {
       (e) => reviewIdRef.current === reviewId && setExplanations((all) => ({ ...all, [unitKey]: { state: 'error', text: errorMessage(e) } })),
     )
   }, [hover, hoverUnit, unitKey, llmReady, explanations])
+
+  // Lines selected with the mouse can be explained too: a small action appears beside the selection, and its answer
+  // stays in a card until closed. While a selection is up, E explains it rather than the hovered unit.
+  const [selection, setSelection] = useState<DiffSelection>()
+  const selectionAnswer = selection ? explanations[selection.key] : undefined
+  const closeSelection = useCallback(() => {
+    setSelection(undefined)
+    window.getSelection()?.removeAllRanges()
+  }, [])
+  const requestSelectionExplanation = useCallback(() => {
+    if (!selection || !llmReady) return
+    const { key, fileIndex, lines } = selection
+    const current = explanations[key]
+    if (current && current.state !== 'error') return
+    setExplanations((all) => ({ ...all, [key]: { state: 'loading' } }))
+    const reviewId = reviewIdRef.current
+    window.yolk.explainSelection(reviewId, fileIndex, lines).then(
+      (text) => reviewIdRef.current === reviewId && setExplanations((all) => ({ ...all, [key]: { state: 'done', text } })),
+      (e) => reviewIdRef.current === reviewId && setExplanations((all) => ({ ...all, [key]: { state: 'error', text: errorMessage(e) } })),
+    )
+  }, [selection, llmReady, explanations])
+  // A new selection replaces the old one; clearing the selection drops the action, but an answer card stays open.
+  const onSelectionEnd = useCallback(() => {
+    requestAnimationFrame(() => {
+      const next = readSelection()
+      if (next) setSelection(next)
+      else setSelection((current) => (current && explanations[current.key] ? current : undefined))
+    })
+  }, [explanations])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'e' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target)) requestExplanation()
+      if (isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key.toLowerCase() === 'e') {
+        if (selection) requestSelectionExplanation()
+        else requestExplanation()
+      }
+      if (e.key === 'Escape' && selection) closeSelection()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [requestExplanation])
+  }, [requestExplanation, requestSelectionExplanation, closeSelection, selection])
+  // A click outside the card closes an answered selection; starting a new selection outside it does the same.
+  useEffect(() => {
+    if (!selection) return
+    const onDown = (e: MouseEvent) => {
+      if ((e.target as Element).closest('.selection-card, .selection-action')) return
+      setSelection(undefined)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [selection])
 
   // C toggles "core only" anywhere on the page except while typing.
   useEffect(() => {
@@ -232,6 +278,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
             <div
               className="files"
               onMouseLeave={() => onHover(undefined)}
+              onMouseUp={onSelectionEnd}
               // A plain click on code asks for its explanation; a click that ends a text selection does not.
               onClick={() => window.getSelection()?.isCollapsed !== false && requestExplanation()}
             >
@@ -252,7 +299,16 @@ export function Review({ repo, number }: { repo: string; number: number }) {
           </LayoutContent>
         }
       />
-      {hover && hovered && (
+      {selection && (
+        <SelectionExplain
+          selection={selection}
+          explanation={selectionAnswer}
+          llmReady={llmReady}
+          onExplain={requestSelectionExplanation}
+          onClose={closeSelection}
+        />
+      )}
+      {hover && hovered && !selection && (
         <Tooltip
           hover={hover}
           file={hovered}

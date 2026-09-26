@@ -1,11 +1,12 @@
 import { TypeSafeClient } from '@typesafe-ai/sdk'
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, type WebContents } from 'electron'
 import { fileURLToPath } from 'node:url'
-import { chunkPullRequest, judgeFiles } from '../core/analyze'
+import { chunkPullRequest, judgeFiles, type FileResult } from '../core/analyze'
 import { suggestsRemoval, type JudgingSettings } from '../core/judgment'
-import { explain, explainMessages } from '../core/llm'
+import { complete, explainMessages, explainSelectionMessages, type ExplainSelectionInput, type SelectedLine } from '../core/llm'
 import { currentUser, listPullRequests, listRepositories, repoKey, type PullRequestState } from '../core/sources/gh'
-import type { ReviewProgress, ReviewStart, SettingsUpdate } from '../shared/api'
+import { MAX_SELECTION, type ReviewProgress, type ReviewStart, type SelectionLine, type SettingsUpdate } from '../shared/api'
 import { conventionFor, llmConfig, loadSettings, saveConvention, saveJudging, saveSettings, settingsView } from './settings'
 
 const reviews = new Map<number, { reviewId: string; controller: AbortController }>()
@@ -86,33 +87,35 @@ async function judgeInBackground(sender: WebContents, reviewId: string, { pr, fi
   }
 }
 
-/** Explains a whole judgment unit (a function, or top-level changes) with each block's category, on request. */
-async function explainUnit(sender: WebContents, reviewId: string, fileIndex: number, unitId: string): Promise<string> {
+/** The review a window shows and the signal that cancels its requests, or an error if it has closed. */
+function openReview(sender: WebContents, reviewId: string) {
   const review = shown.get(sender.id)
   if (review?.reviewId !== reviewId) throw new Error('这个审阅已经关闭')
-  const { signal } = reviews.get(sender.id)!.controller
-  const file = review.files[fileIndex]
-  const unit = file.chunks!.units.find((u) => u.id === unitId)!
+  return { review, signal: reviews.get(sender.id)!.controller.signal }
+}
+
+/** Every block of a file with its judged role (null until judged) and whether it has ✂ under the current thresholds. */
+async function explainedBlocks(file: FileResult) {
   const { thresholds } = (await loadSettings()).judging
   // judgeFiles merges judgments into these same file objects, so roles and ✂ reflect what Jev has said so far.
-  const blocks = file.chunks!.blocks
-    .filter((block) => block.unit === unitId)
-    .map((block) => {
-      const judgment = file.judgments?.[block.id]
-      return {
-        block,
-        role: file.testBlocks?.includes(block.id) ? ('test' as const) : (judgment?.role ?? null),
-        cut: judgment !== undefined && suggestsRemoval(judgment, thresholds),
-      }
-    })
-  const policy = blocks.some((b) => b.cut) ? review.policy : null
-  const input = { pr: review.pr, path: file.diff.path, source: file.source!, unit, blocks, policy }
+  return file.chunks!.blocks.map((block) => {
+    const judgment = file.judgments?.[block.id]
+    return {
+      block,
+      role: file.testBlocks?.includes(block.id) ? ('test' as const) : (judgment?.role ?? null),
+      cut: judgment !== undefined && suggestsRemoval(judgment, thresholds),
+    }
+  })
+}
+
+/** Asks the general model once per model and complete prompt; answers are shared until settings change. */
+async function cachedCompletion(messages: ChatCompletionMessageParam[], signal: AbortSignal): Promise<string> {
   const config = await llmConfig()
   signal.throwIfAborted()
-  const key = JSON.stringify([config.baseURL, config.model, explainMessages(input)])
+  const key = JSON.stringify([config.baseURL, config.model, messages])
   let explanation = explanations.get(key)
   if (!explanation) {
-    explanation = explain(config, input, signal)
+    explanation = complete(config, messages, signal)
     explanations.set(key, explanation)
     const evict = () => {
       if (explanations.get(key) === explanation) explanations.delete(key)
@@ -122,6 +125,51 @@ async function explainUnit(sender: WebContents, reviewId: string, fileIndex: num
     void explanation.catch(evict).finally(() => signal.removeEventListener('abort', evict))
   }
   return explanation
+}
+
+/** Explains a whole judgment unit (a function, or top-level changes) with each block's category, on request. */
+async function explainUnit(sender: WebContents, reviewId: string, fileIndex: number, unitId: string): Promise<string> {
+  const { review, signal } = openReview(sender, reviewId)
+  const file = review.files[fileIndex]
+  const unit = file.chunks!.units.find((u) => u.id === unitId)!
+  const blocks = (await explainedBlocks(file)).filter((b) => b.block.unit === unitId)
+  const policy = blocks.some((b) => b.cut) ? review.policy : null
+  return cachedCompletion(explainMessages({ pr: review.pr, path: file.diff.path, source: file.source!, unit, blocks, policy }), signal)
+}
+
+/** Lines of context kept on each side of a selection that touches no judgment unit. */
+const SELECTION_CONTEXT = 10
+
+/** Explains lines the reviewer selected in a file's diff, with the units they touch as context. */
+async function explainSelection(sender: WebContents, reviewId: string, fileIndex: number, picks: SelectionLine[]): Promise<string> {
+  const { review, signal } = openReview(sender, reviewId)
+  if (!picks.length) throw new Error('没有选中代码')
+  if (picks.length > MAX_SELECTION) throw new Error(`选中的代码太多了，请少于 ${MAX_SELECTION} 行`)
+  const file = review.files[fileIndex]
+  const source = file.source ?? []
+  const diffLines = file.diff.hunks.flatMap((hunk) => hunk.lines)
+  const blocks = file.chunks ? await explainedBlocks(file) : []
+  const blockOf = new Map<number, (typeof blocks)[number]>()
+  for (const b of blocks) for (const line of b.block.lines) blockOf.set(line, b)
+  // Text comes from the main process's own copy of the diff (or the new source for structural context lines).
+  const lines: SelectedLine[] = picks.map(({ kind, oldNo, newNo }) => {
+    const text =
+      diffLines.find((l) => l.kind === kind && l.oldNo === oldNo && l.newNo === newNo)?.text ?? (newNo !== null ? (source[newNo - 1] ?? '') : '')
+    const judged = kind !== 'del' && newNo !== null ? blockOf.get(newNo) : undefined
+    return { kind, oldNo, newNo, text, role: judged?.role ?? null, cut: judged?.cut ?? false }
+  })
+  const newNos = lines.flatMap((l) => (l.newNo === null ? [] : [l.newNo]))
+  let context: ExplainSelectionInput['context'] = null
+  if (newNos.length && source.length) {
+    const first = Math.min(...newNos)
+    const last = Math.max(...newNos)
+    const units = file.chunks?.units.filter((u) => u.start <= last && u.end >= first) ?? []
+    const start = Math.max(1, Math.min(first - (units.length ? 0 : SELECTION_CONTEXT), ...units.map((u) => u.start)))
+    const end = Math.min(source.length, Math.max(last + (units.length ? 0 : SELECTION_CONTEXT), ...units.map((u) => u.end)))
+    context = { start, end, blocks: blocks.filter((b) => b.block.lines.some((line) => line >= start && line <= end)) }
+  }
+  const policy = lines.some((l) => l.cut) ? review.policy : null
+  return cachedCompletion(explainSelectionMessages({ pr: review.pr, path: file.diff.path, source, lines, context, policy }), signal)
 }
 
 app.whenReady().then(() => {
@@ -155,6 +203,9 @@ app.whenReady().then(() => {
   ipcMain.handle('review:start', (event, url: string, reviewId: string) => startReview(event.sender, url, reviewId))
   ipcMain.handle('review:explain', (event, reviewId: string, fileIndex: number, unitId: string) =>
     explainUnit(event.sender, reviewId, fileIndex, unitId),
+  )
+  ipcMain.handle('review:explain-selection', (event, reviewId: string, fileIndex: number, lines: SelectionLine[]) =>
+    explainSelection(event.sender, reviewId, fileIndex, lines),
   )
   ipcMain.on('review:cancel', (event, reviewId: string) => {
     const review = reviews.get(event.sender.id)

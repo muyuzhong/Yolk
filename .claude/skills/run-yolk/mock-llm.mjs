@@ -1,6 +1,7 @@
 // Minimal OpenAI-compatible /v1/chat/completions server for exercising hover explanations
 // without a real model. The reply names the unit the app asked about and counts its lines by
-// category, so it shows what was sent, and says whether the project convention was included.
+// category (or, for a mouse selection, counts the selected and removed lines), so it shows what
+// was sent, and says whether the project convention was included.
 // Usage: node .claude/skills/run-yolk/mock-llm.mjs [port]   (default 8787)
 import { createServer } from 'node:http'
 
@@ -22,8 +23,13 @@ createServer((req, res) => {
     for (const [, tag] of prompt.matchAll(/^\s*\d+ (\S*)[\s　]*\|/gm)) if (tag) counts[tag] = (counts[tag] ?? 0) + 1
     const summary = Object.entries(counts).map(([tag, n]) => `${tag} ${n} 行`).join('、') || '没有判断结果'
     const policy = prompt.includes('项目约定：')
-    const text = `模拟解释（${model}）：${unit}，${summary}。${policy ? '请求里带了项目约定。' : ''}`
-    console.log(`[mock-llm] model=${model} unit=${JSON.stringify(unit)} ${summary} policy=${policy}`)
+    // A selection request lists the chosen diff lines after "审阅者选中的部分：" as "+ 12 核心 | code" / "- 旧8 | code".
+    const selected = prompt.split('审阅者选中的部分：')[1]?.split('项目约定：')[0].trim().split('\n').filter(Boolean) ?? []
+    const removed = selected.filter((line) => line.startsWith('-')).length
+    const text = selected.length
+      ? `模拟解释（${model}）：选中 ${selected.length} 行，其中删除 ${removed} 行。${policy ? '请求里带了项目约定。' : ''}`
+      : `模拟解释（${model}）：${unit}，${summary}。${policy ? '请求里带了项目约定。' : ''}`
+    console.log(`[mock-llm] model=${model} ${selected.length ? `selection=${selected.length} removed=${removed}` : `unit=${JSON.stringify(unit)} ${summary}`} policy=${policy}`)
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(
       JSON.stringify({

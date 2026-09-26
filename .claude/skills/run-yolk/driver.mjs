@@ -200,6 +200,43 @@ const COMMANDS = {
     console.log('explanation:', (await p.textContent('.tooltip .explanation'))?.trim())
   },
 
+  /**
+   * Select new-version lines FROM..TO of the first file that has them, as a mouse drag would, press E, and print the
+   * explanation of the selection (up to 60 s).
+   */
+  async 'explain-selection'(args) {
+    const p = await needReview()
+    const [from, to] = String(args ?? '').trim().split(/\s+/).map(Number)
+    if (!from || !to) throw new Error('usage: explain-selection <from line> <to line>')
+    const found = await p.evaluate(([a, b]) => {
+      for (const section of document.querySelectorAll('section.file')) {
+        const first = section.querySelector(`.line[data-new="${a}"] code`)
+        const last = section.querySelector(`.line[data-new="${b}"] code`)
+        if (!first || !last) continue
+        first.scrollIntoView({ block: 'center' })
+        const range = document.createRange()
+        range.setStart(first, 0)
+        range.setEnd(last, last.childNodes.length)
+        getSelection().removeAllRanges()
+        getSelection().addRange(range)
+        section.querySelector('.line').closest('.files').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+        return section.querySelector('.file-path').textContent
+      }
+      return null
+    }, [from, to])
+    if (!found) throw new Error(`no file shows lines ${from} and ${to}`)
+    // A selection explained before shows its card at once; otherwise ask with E.
+    await p.waitForSelector('.selection-action, .selection-card')
+    if (await p.$('.selection-action')) await p.keyboard.press('e')
+    await p.waitForFunction(() => document.querySelector('.selection-card .explanation, .selection-card .tooltip-error'), null, { timeout: 60_000 })
+    const [subject, text] = await p.evaluate(() => [
+      document.querySelector('.selection-card .explanation-subject')?.textContent,
+      document.querySelector('.selection-card .explanation, .selection-card .tooltip-error')?.textContent,
+    ])
+    console.log(`${found} · ${subject}: ${text}`)
+    await p.keyboard.press('Escape')
+  },
+
   async home() {
     await goto('#/')
     await need().waitForSelector('.landing-search input')

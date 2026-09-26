@@ -51,6 +51,16 @@ export type ReviewProgress =
   | { type: 'done'; reviewId: string; model: string; inputTokens: number }
   | { type: 'error'; reviewId: string; message: string }
 
+/** A line the reviewer selected in a file's diff, by position; the main process looks up its text itself. */
+export interface SelectionLine {
+  kind: 'add' | 'del' | 'ctx'
+  oldNo: number | null
+  newNo: number | null
+}
+
+/** The most lines one selection may send to the general model. */
+export const MAX_SELECTION = 200
+
 export interface YolkApi {
   getSettings(): Promise<SettingsView>
   saveSettings(update: SettingsUpdate): Promise<SettingsView>
@@ -68,5 +78,7 @@ export interface YolkApi {
    * what it does as a whole, then its key lines by category. Asked for on demand; cached in the main process.
    */
   explainUnit(reviewId: string, fileIndex: number, unitId: string): Promise<string>
+  /** Explains lines the reviewer selected with the mouse, with the code around them as context; cached like explainUnit. */
+  explainSelection(reviewId: string, fileIndex: number, lines: SelectionLine[]): Promise<string>
   onReviewProgress(listener: (progress: ReviewProgress) => void): () => void
 }
