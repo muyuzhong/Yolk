@@ -12,7 +12,8 @@
     "judge": "tsx scripts/judge.ts",
     "capture": "tsx scripts/capture.ts",
     "test": "tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dist": "npm run build && electron-builder --publish never"
   },
   "dependencies": {
     "@typesafe-ai/sdk": "^0.6.0",
@@ -30,6 +31,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "5.2",
     "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "lucide-react": "^1.48.0",
     "playwright-core": "^1.63.0",
@@ -40,5 +42,11 @@
     "typescript": "^7.0.2",
     "vite": "^7.3.6"
   },
-  "main": "out/main/index.js"
+  "main": "out/main/index.js",
+  "description": "A desktop lens for reviewing GitHub pull requests",
+  "author": "muyuzhong",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/muyuzhong/Yolk.git"
+  }
 }

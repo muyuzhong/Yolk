@@ -26,7 +26,7 @@ import { rememberReview } from './reviewed'
 import { blockStates, lineCounts, type Category } from './rows'
 import { Tooltip, type Explanation } from './Tooltip'
 
-type Status = { state: 'judging' } | { state: 'done'; model: string; inputTokens: number } | { state: 'error'; message: string }
+type Status = { state: 'judging' } | { state: 'done'; model: string; inputTokens: number; cachedUnits?: number } | { state: 'error'; message: string }
 
 const isTyping = (target: EventTarget | null) => target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
 
@@ -74,7 +74,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
         const { fileIndex, unitId, judgments: unitJudgments, error } = progress
         if (unitJudgments) setJudgments((all) => ({ ...all, [fileIndex]: { ...all[fileIndex], ...unitJudgments } }))
         if (error) setUnitErrors((all) => ({ ...all, [fileIndex]: { ...all[fileIndex], [unitId]: error } }))
-      } else if (progress.type === 'done') setStatus({ state: 'done', model: progress.model, inputTokens: progress.inputTokens })
+      } else if (progress.type === 'done') setStatus({ state: 'done', model: progress.model, inputTokens: progress.inputTokens, cachedUnits: progress.cachedUnits })
       else setStatus({ state: 'error', message: progress.message })
     })
     window.yolk.startReview(url, reviewId).then(setReview, (e) => setLoadError(errorMessage(e)))
@@ -510,6 +510,7 @@ function JudgeStatus({ status, judged, total }: { status: Status; judged: number
         <Icon icon={CircleCheck} size="xsm" color="success" />
         <Text type="supporting">
           判断完成 · {status.model || 'jev'} · {(status.inputTokens / 1000).toFixed(1)}k token
+          {!!status.cachedUnits && ` · ${status.cachedUnits} 处复用缓存`}
         </Text>
       </HStack>
     )

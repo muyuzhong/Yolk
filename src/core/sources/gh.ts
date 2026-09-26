@@ -1,11 +1,23 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { join } from 'node:path'
 
 const exec = promisify(execFile)
 
 async function gh(args: string[]): Promise<string> {
-  const { stdout } = await exec('gh', args, { maxBuffer: 256 * 1024 * 1024 })
-  return stdout
+  // Finder and desktop launchers may not inherit the terminal's PATH.
+  const candidates = process.platform === 'win32'
+    ? ['gh.exe', join(process.env.ProgramFiles || 'C:\\Program Files', 'GitHub CLI', 'gh.exe')]
+    : ['gh', ...(process.platform === 'darwin' ? ['/opt/homebrew/bin/gh'] : []), '/usr/local/bin/gh', '/usr/bin/gh']
+  for (const executable of candidates) {
+    try {
+      const { stdout } = await exec(executable, args, { maxBuffer: 256 * 1024 * 1024, windowsHide: true })
+      return stdout
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+  throw new Error('找不到 GitHub CLI (gh)。请安装 https://cli.github.com/，运行 gh auth login，然后重启 Yolk。')
 }
 
 export interface PullRequest {

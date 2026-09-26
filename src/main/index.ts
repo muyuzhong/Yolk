@@ -2,6 +2,7 @@ import { TypeSafeClient } from '@typesafe-ai/sdk'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, type WebContents } from 'electron'
 import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { chunkPullRequest, judgeFiles, type FileResult } from '../core/analyze'
 import { suggestsRemoval, type JudgingSettings } from '../core/judgment'
 import { complete, explainMessages, explainSelectionMessages, type ExplainSelectionInput, type SelectedLine } from '../core/llm'
@@ -74,14 +75,15 @@ async function judgeInBackground(sender: WebContents, reviewId: string, { pr, fi
     signal.throwIfAborted()
     // Without a key in settings the SDK falls back to TYPESAFE_API_KEY.
     const client = new TypeSafeClient({ defaultModel: jev.model, ...(jev.apiKey ? { apiKey: jev.apiKey } : {}) })
-    const { model, inputTokens } = await judgeFiles(pr, files, {
+    const { model, inputTokens, cachedUnits } = await judgeFiles(pr, files, {
       policy,
       client,
+      cacheDir: join(app.getPath('userData'), 'jev-cache'),
       roles: judging.roles,
       signal,
       onUnit: (result) => send({ type: 'unit', reviewId, ...result }),
     })
-    send({ type: 'done', reviewId, model, inputTokens })
+    send({ type: 'done', reviewId, model, inputTokens, cachedUnits })
   } catch (error) {
     send({ type: 'error', reviewId, message: error instanceof Error ? error.message : String(error) })
   }
@@ -212,6 +214,11 @@ app.whenReady().then(() => {
     if (review?.reviewId === reviewId) review.controller.abort()
   })
   createWindow()
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
 })
 
-app.on('window-all-closed', () => app.quit())
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})

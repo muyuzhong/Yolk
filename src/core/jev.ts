@@ -1,4 +1,7 @@
 import { choice, noul, type ChoiceResponse, type NoulResponse, type Questions, type TypeSafeClient } from '@typesafe-ai/sdk'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { Block, Unit } from './chunk'
 import { diffForRange, type FileDiff } from './diff'
 import { DEFAULT_ROLE_CRITERIA, type Judgment, type Role } from './judgment'
@@ -52,8 +55,22 @@ export function buildRequest({ pr, policy, diff, source, unit, blocks, roles = D
   return { state, questions }
 }
 
-export async function judgeUnit(client: TypeSafeClient, input: UnitInput, signal?: AbortSignal) {
-  const result = await client.systemOne(buildRequest(input), { signal })
+export async function judgeUnit(client: TypeSafeClient, input: UnitInput, signal?: AbortSignal, cacheDir?: string) {
+  signal?.throwIfAborted()
+  const request = buildRequest(input)
+  // Version the stored result format; prompt/criteria/code changes are already part of the key.
+  const key = createHash('sha256').update(JSON.stringify([1, client.baseURL, client.defaultModel, request])).digest('hex')
+  // ponytail: one small file per request; add eviction if accumulated cache size warrants it.
+  const file = cacheDir ? join(cacheDir, `${key}.json`) : undefined
+  if (file) {
+    const cached = await readFile(file, 'utf8').then(JSON.parse).catch(() => null)
+    signal?.throwIfAborted()
+    if (cached && typeof cached.model === 'string' && cached.model && input.blocks.every(({ id }) => validJudgment(cached.judgments?.[id]))) {
+      return { judgments: cached.judgments as Record<string, Judgment>, model: cached.model as string, inputTokens: 0, cached: true }
+    }
+  }
+  const result = await client.systemOne(request, { signal })
+  signal?.throwIfAborted()
   const judgments: Record<string, Judgment> = {}
   for (const block of input.blocks) {
     const role = result.answers[`${block.id}_role`] as ChoiceResponse<Record<Role, string>>
@@ -65,5 +82,27 @@ export async function judgeUnit(client: TypeSafeClient, input: UnitInput, signal
       excluded: excluded?.noul ?? null,
     }
   }
-  return { judgments, model: result.model, inputTokens: result.usage.input_tokens }
+  if (file && input.blocks.every(({ id }) => validJudgment(judgments[id]))) {
+    const temporary = `${file}.${randomUUID()}.tmp`
+    try {
+      await mkdir(cacheDir!, { recursive: true, mode: 0o700 })
+      await writeFile(temporary, JSON.stringify({ judgments, model: result.model }), { mode: 0o600 })
+      await rename(temporary, file)
+    } catch (error) {
+      console.warn('Jev 缓存写入失败：', (error as NodeJS.ErrnoException).code)
+    } finally {
+      await rm(temporary, { force: true }).catch(() => {})
+    }
+  }
+  return { judgments, model: result.model, inputTokens: result.usage.input_tokens, cached: false }
+}
+
+/** Disk contents are disposable: incomplete or malformed entries must be judged again. */
+function validJudgment(value: unknown): value is Judgment {
+  if (!value || typeof value !== 'object') return false
+  const j = value as Judgment
+  const probability = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1
+  return ['core', 'defense', 'support'].includes(j.role) && probability(j.confidence)
+    && ['core', 'defense', 'support'].every(role => probability(j.probabilities?.[role as Role]))
+    && (j.excluded === null || probability(j.excluded))
 }

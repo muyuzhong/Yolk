@@ -1,0 +1,22 @@
+appId: com.muyuzhong.yolk
+productName: Yolk
+directories:
+  output: dist
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  - node_modules/@vscode/tree-sitter-wasm/**/*
+artifactName: Yolk-${version}-${os}-${arch}.${ext}
+mac:
+  category: public.app-category.developer-tools
+  target: [dmg, zip]
+win:
+  target: [nsis]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  category: Development
+  target: [AppImage, deb, rpm, tar.gz]
+  maintainer: muyuzhong <muyuzhong@users.noreply.github.com>

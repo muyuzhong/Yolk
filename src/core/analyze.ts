@@ -59,6 +59,8 @@ export interface UnitResult {
 export interface JudgeOptions {
   policy: string | null
   client: TypeSafeClient
+  /** Successful unit judgments, keyed by the complete request and model. */
+  cacheDir?: string
   /** Role criteria to ask with; the defaults when omitted. */
   roles?: Record<Role, string>
   signal?: AbortSignal
@@ -66,20 +68,22 @@ export interface JudgeOptions {
 }
 
 /** Asks Jev about every judgment unit, at most 8 requests at a time; results are also merged into `files`. */
-export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy, client, roles, onUnit, signal }: JudgeOptions) {
+export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy, client, roles, onUnit, signal, cacheDir }: JudgeOptions) {
   let model = ''
   let inputTokens = 0
+  let cachedUnits = 0
   const tasks = files.flatMap((file, fileIndex) => file.chunks?.units.map((unit) => ({ file, fileIndex, unit })) ?? [])
   await mapLimit(tasks, 8, async ({ file, fileIndex, unit }) => {
     if (signal?.aborted) return
     const blocks = file.chunks!.blocks.filter((b) => b.unit === unit.id && !file.testBlocks!.includes(b.id))
     if (!blocks.length) return
     try {
-      const result = await judgeUnit(client, { pr, policy, diff: file.diff, source: file.source!, unit, blocks, roles }, signal)
+      const result = await judgeUnit(client, { pr, policy, diff: file.diff, source: file.source!, unit, blocks, roles }, signal, cacheDir)
       if (signal?.aborted) return
       file.judgments = { ...file.judgments, ...result.judgments }
       model = result.model
       inputTokens += result.inputTokens
+      if (result.cached) cachedUnits++
       onUnit?.({ fileIndex, unitId: unit.id, judgments: result.judgments })
     } catch (error) {
       if (signal?.aborted) return
@@ -88,7 +92,7 @@ export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy,
       onUnit?.({ fileIndex, unitId: unit.id, error: message })
     }
   })
-  return { model, inputTokens }
+  return { model, inputTokens, cachedUnits }
 }
 
 /** Chunks and judges a PR in one go, for the terminal scripts. The Jev key comes from TYPESAFE_API_KEY. */

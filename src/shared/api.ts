@@ -48,7 +48,7 @@ export interface ReviewStart {
 
 export type ReviewProgress =
   | ({ type: 'unit'; reviewId: string } & UnitResult)
-  | { type: 'done'; reviewId: string; model: string; inputTokens: number }
+  | { type: 'done'; reviewId: string; model: string; inputTokens: number; cachedUnits?: number }
   | { type: 'error'; reviewId: string; message: string }
 
 /** A line the reviewer selected in a file's diff, by position; the main process looks up its text itself. */
