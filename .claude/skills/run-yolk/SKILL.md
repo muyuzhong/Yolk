@@ -133,7 +133,8 @@ profile in `/tmp/yolk-shots/userdata`, so `~/.config/yolk` is never touched.
 | `explain <category>` | hover like `hover-block`, wait for the general model's explanation, print it with the block id |
 | `core-only` | toggle 只看核心 with its keyboard shortcut C, print how many fold rows exist |
 | `theme <light\|dark\|system>` | force the color scheme (Electron nativeTheme + Playwright media emulation) |
-| `settings` / `home` / `repos` | navigate by setting the URL hash (`#/settings`, `#/`, `#/repos`); pages are hash routes |
+| `home` / `repos` | navigate by setting the URL hash (`#/`, `#/repos`); pages are hash routes |
+| `settings` | open the settings dialog from the side nav and print each setting row (name: value summary) |
 | `ss [name]` | screenshot to `$SCREENSHOT_DIR/<name>.png` |
 | `click <css>` / `text [css]` / `eval <js>` | generic DOM helpers |
 | `quit` | close the app and exit |
@@ -176,7 +177,7 @@ rows); none call an API.
   session with `bash --norc` as above.
 - **Playwright forces a light color scheme.** It emulates `prefers-color-scheme: light` by default, so setting
   Electron's `nativeTheme` alone changes nothing in the page. `theme dark` does both.
-- **Pages are hash routes** (`#/`, `#/repos`, `#/r/owner/repo`, `#/r/owner/repo/pull/N`, `#/settings`). `eval location.hash =
+- **Pages are hash routes** (`#/`, `#/repos`, `#/r/owner/repo`, `#/r/owner/repo/pull/N`; settings are a dialog, `.settings-dialog`). `eval location.hash =
   '...'` jumps anywhere; the UI is built with Astryx components, so look elements up by the app's own classes
   (`.landing-search`, `.filter-field`, `.pr-item[data-number]`, `.pr-card[data-number]`, `.file-list-item`, `.line.add.cat-*`, `.tooltip`), not Astryx internals.
 - **Test code never goes to Jev.** Test files and Rust `#[cfg(test)]` items render green at once and are not

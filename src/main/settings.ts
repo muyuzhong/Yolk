@@ -59,7 +59,7 @@ export async function llmConfig(): Promise<LlmConfig> {
   const { llm } = await loadSettings()
   const fallback = env()
   const config = { baseURL: llm.baseURL || fallback.baseURL, apiKey: llm.apiKey || fallback.apiKey, model: llm.model || fallback.model }
-  if (!config.baseURL || !config.apiKey || !config.model) throw new Error('通用模型还没配置：请在设置页填写 Base URL、API Key 和模型名')
+  if (!config.baseURL || !config.apiKey || !config.model) throw new Error('通用模型还没配置：请在设置里填写 Base URL、API Key 和模型名')
   return config
 }
 

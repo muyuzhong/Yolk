@@ -26,6 +26,7 @@ import { FilterField } from './FilterField'
 import { ListSkeleton } from './RepositoryList'
 import { avatarUrl, errorMessage } from './labels'
 import { useReviewedPullRequests } from './reviewed'
+import { openSettings, useSettingsDialog } from './settingsDialog'
 import { navigate } from './route'
 
 const STATES: [PullRequestState, string][] = [
@@ -82,9 +83,11 @@ export function Repository({ repo }: { repo: string }) {
   const [attempt, setAttempt] = useState(0)
   const [conventions, setConventions] = useState<Conventions>()
 
+  // Re-read when the settings card closes: the user may have just written this repository's convention there.
+  const settingsOpen = useSettingsDialog().isOpen
   useEffect(() => {
-    window.yolk.getSettings().then((settings) => setConventions(settings.conventions))
-  }, [])
+    if (!settingsOpen) window.yolk.getSettings().then((settings) => setConventions(settings.conventions))
+  }, [settingsOpen])
 
   useEffect(() => {
     let active = true
@@ -132,7 +135,7 @@ export function Repository({ repo }: { repo: string }) {
                   icon={<Icon icon={ScrollText} size="sm" />}
                   label={conventions.repos[repo] ? '审阅约定 · 本仓库' : conventions.default ? '审阅约定 · 默认' : '审阅约定 · 未设置'}
                   tooltip="Jev 按这份约定标出建议删除（✂）的代码"
-                  onClick={() => navigate({ page: 'settings', repo })}
+                  onClick={() => openSettings(repo)}
                 />
               )}
               <IconButton variant="ghost" label="刷新" tooltip="刷新" icon={<Icon icon={RotateCw} size="sm" />} onClick={() => setAttempt((n) => n + 1)} />

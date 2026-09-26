@@ -47,7 +47,7 @@ Electron
  │   ├─ 通用模型：悬停解释
  │   └─ 设置：API key 用 safeStorage 加密（系统钥匙串）
  ├─ preload：通过 IPC 只暴露有限的几个接口
- └─ 渲染进程（React）：首页（选仓库）、仓库页（PR 列表）、差异视图、设置页
+ └─ 渲染进程（React）：首页（搜索框）、全部仓库、仓库页（PR 列表）、差异视图、设置弹窗
 ```
 
 API key 只在主进程里使用，不会传到渲染进程。
@@ -67,7 +67,7 @@ src/
     analyze.ts     把上面串起来：PR → 代码块 → 判断结果（每判断完一个单元就推送一次）
   main/            Electron 主进程：窗口、IPC、设置存储
   preload/
-  renderer/        React：首页、仓库页、差异视图、设置页
+  renderer/        React：首页、全部仓库、仓库页、差异视图、设置弹窗
 scripts/           开发用脚本：在终端打印切块和判断结果，用来调规则
 ```
 
@@ -100,7 +100,7 @@ scripts/           开发用脚本：在终端打印切块和判断结果，用�
 
 - **两层：** 一份**默认约定**，对所有仓库生效；再按仓库写**仓库约定**（键是 `owner/repo`，GitHub 以外是 `host/owner/repo`），有仓库约定时替代默认约定。两者都没有时，这次审阅不带约定。
 - **怎么用：** 打开 PR 时主进程按上面的顺序取约定，作为 `policy` 交给 Jev（见 7.1）。Jev 会对每个非核心的块判断"约定是否排除了它"，排除的可能性高，就标上 ✂（建议删除）。审阅页的"审阅约定"弹窗显示这次用的是哪一份。
-- **在哪里改：** 设置页的"审阅约定"卡片，每份约定单独保存。仓库页页头和审阅页弹窗里都有入口，直接跳到对应仓库那一项（`#/settings/r/owner/repo`）。
+- **在哪里改：** 设置里的"审阅约定"分区，每份约定单独保存。仓库页页头和审阅页弹窗里都有入口，直接打开设置并展开对应仓库那一项。
 - **什么时候生效：** 每次打开 PR 都会重新判断（判断结果不缓存），所以改完约定，下次打开 PR 就按新约定判断。已经打开的审阅不会自动重跑。
 - **没有约定时：** 三色标注照常显示，只是不标 ✂。
 - **不读仓库里的文件：** 早先的设计是在仓库根目录放一份 `.yolk.md`，随代码提交、团队共用。现在先把个人使用走通：约定放在客户端里，改起来不用经过 git，也能给没有写权限的仓库（比如审阅开源项目时）定约定。仓库里即使有 `.yolk.md` 也不读。团队怎么共享约定，以后再设计。
@@ -266,7 +266,7 @@ async function getUser(id) {                     // B1 函数外壳
 | 分组 | 字段 |
 |---|---|
 | Jev | API Key；模型，默认 `jev-latest`。阈值调好后，建议固定成具体版本号（例如 `jev-1.13.0`），避免别名自动升级到新版本后，原来的阈值不再适用 |
-| 通用模型 | Base URL（例如 `https://api.openai.com/v1`、`https://api.deepseek.com/v1`、内网地址）；API Key；模型名。设置页没填的项，会使用环境变量 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL`（和 Jev 使用 `TYPESAFE_API_KEY` 的方式一样） |
+| 通用模型 | Base URL（例如 `https://api.openai.com/v1`、`https://api.deepseek.com/v1`、内网地址）；API Key；模型名。设置里没填的项，会使用环境变量 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL`（和 Jev 使用 `TYPESAFE_API_KEY` 的方式一样） |
 
 两个 API key 都用 Electron 的 safeStorage 加密后保存。
 
@@ -286,9 +286,9 @@ M2 实测时，测试代码几乎全被判为支撑，hono 的测试文件 53 �
 界面基于 Meta 开源的设计系统 [Astryx](https://github.com/facebook/astryx)（`@astryxdesign/core` + `theme-neutral`，基于 React 19）搭建，不再手写页面样式：
 
 - **外框：** `AppShell` + `TopNav`（Yolk 标识、面包屑"全部仓库 / owner/repo / #123"、在 GitHub 上打开）+ 可折叠的 `SideNav`（首页、全部仓库、已固定和最近打开的仓库、设置；仓库可以钉住）。进入审阅页时侧边栏自动收起，给 diff 让出宽度。
-- **页面：** 列表用 `List`/`ListItem`（整行可点、头像、`Token` 标签、`Timestamp` 相对时间），加载用 `Skeleton`/`Spinner`，出错用 `Banner`（带重试）或 `EmptyState`，审阅约定用 `Dialog` + `Markdown` 渲染，保存结果用 `Toast`。设置页左侧是分区（模型、审阅约定），右侧每个设置项一行：名称加当前值的摘要，点“编辑”在原地展开、单独保存；清除 Key、删除约定这类操作只在编辑状态里出现。
+- **页面：** 列表用 `List`/`ListItem`（整行可点、头像、`Token` 标签、`Timestamp` 相对时间），加载用 `Skeleton`/`Spinner`，出错用 `Banner`（带重试）或 `EmptyState`，审阅约定用 `Dialog` + `Markdown` 渲染，保存结果用 `Toast`。设置是一张浮在当前页面上的毛玻璃卡片（`Dialog`，半透明加 `backdrop-filter` 模糊），关掉后还在原来的页面；卡片左侧是分区（模型、审阅约定），右侧每个设置项一行：名称加当前值的摘要，点“编辑”在原地展开、单独保存；清除 Key、删除约定这类操作只在编辑状态里出现。
 - **语言和主题：** `InternationalizationProvider` 用 Astryx 自带的 `zh-CN` 语言包（相对时间显示"1小时前"、"昨天"）；主题跟随系统明暗。
-- **路由：** 页面放在 URL hash 里（`#/` 首页、`#/repos` 全部仓库、`#/r/owner/repo`、`#/r/owner/repo/pull/N`、`#/settings`、`#/settings/r/owner/repo`），所以侧边栏和面包屑都是真正的链接，鼠标侧键和 Alt+←/→ 可以前进后退，窗口标题跟着页面变。
+- **路由：** 页面放在 URL hash 里（`#/` 首页、`#/repos` 全部仓库、`#/r/owner/repo`、`#/r/owner/repo/pull/N`；设置不是页面，是浮在当前页面上的弹窗），所以侧边栏和面包屑都是真正的链接，鼠标侧键和 Alt+←/→ 可以前进后退，窗口标题跟着页面变。
 - **首页和列表页：** 首页只有一个搜索框（`Typeahead`：粘贴 PR 链接直接审阅，输入 owner/repo 打开仓库，其他文字匹配自己的仓库），背景是缓慢流动的靛蓝抖动点阵，搜索框有一圈流动光边，标题用像素字体 Departure Mono。这两层动效用 [Paper Shaders](https://shaders.paper.design)（WebGL），颜色在运行时从 Astryx 色板变量取。全部仓库页有快速访问卡片、按最近推送分组的列表和按 `/` 聚焦的筛选框；PR 列表页把请求你审阅的 PR 放在最上面，每行有状态图标、改动规模条，在 Yolk 里审过的 PR 显示核心行数（审阅完成时记在本机）。
 - **Astryx 没有的只自己写：** diff 行、三色、折叠行和悬停卡片仍然是自己的组件，但颜色全部取 Astryx 的色板变量（核心 `yellow`、防御 `blue`、支撑 `gray`、测试 `green`、删除 `red`），明暗两套自动切换。整块的背景比标签淡：测试代码最淡，免得大段测试抢眼。
 - **给 agent 用的 CLI：** `npx astryx build "<想做的页面>"` 推荐模板和组件，`npx astryx --dense component <名字>` 查组件属性，写界面前先查，不要猜 API。

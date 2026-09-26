@@ -20,6 +20,7 @@ import type { Judgment } from '../../core/judgment'
 import type { ReviewStart } from '../../shared/api'
 import { DiffFile, type Hover } from './DiffFile'
 import { errorMessage, LABEL, SHOWN } from './labels'
+import { openSettings } from './settingsDialog'
 import { navigate, pullRequestUrl } from './route'
 import { rememberReview } from './reviewed'
 import { blockStates, lineCounts, type Category } from './rows'
@@ -276,7 +277,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
             <VStack gap={4}>
               <Markdown density="compact">{policy}</Markdown>
               <HStack gap={2}>
-                <Button size="sm" label={policySource === 'repo' ? '编辑约定' : '给这个仓库单独写一份'} onClick={() => navigate({ page: 'settings', repo })} />
+                <Button size="sm" label={policySource === 'repo' ? '编辑约定' : '给这个仓库单独写一份'} onClick={() => openSettings(repo)} />
                 <Text type="supporting">改动在下次打开这个 PR 时生效。</Text>
               </HStack>
             </VStack>
@@ -286,7 +287,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
               icon={<Icon icon={ScrollText} size="lg" />}
               title="还没有审阅约定"
               description="写下项目现阶段不需要哪些代码，例如「MVP 阶段不需要重试和降级」，Jev 会据此标出建议删除（✂）的块。"
-              actions={<Button size="sm" label="写一份约定" onClick={() => navigate({ page: 'settings', repo })} />}
+              actions={<Button size="sm" label="写一份约定" onClick={() => openSettings(repo)} />}
             />
           )}
         </div>

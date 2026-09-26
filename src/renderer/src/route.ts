@@ -7,17 +7,11 @@ import { useMemo, useSyncExternalStore } from 'react'
 export type Route =
   | { page: 'home' }
   | { page: 'repos' }
-  /** `repo` opens that repository's review convention for editing. */
-  | { page: 'settings'; repo?: string }
   | { page: 'repo'; repo: string }
   | { page: 'review'; repo: string; number: number }
 
 export function parseRoute(hash: string): Route {
   const [first, ...rest] = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
-  if (first === 'settings') {
-    const [r, ...repo] = rest
-    return r === 'r' && (repo.length === 2 || repo.length === 3) ? { page: 'settings', repo: repo.join('/') } : { page: 'settings' }
-  }
   if (first === 'repos') return { page: 'repos' }
   if (first === 'r') {
     const pull = rest.length - 2
@@ -33,8 +27,6 @@ export function href(route: Route): string {
   switch (route.page) {
     case 'home':
       return '#/'
-    case 'settings':
-      return route.repo ? `#/settings/r/${route.repo}` : '#/settings'
     case 'repos':
       return '#/repos'
     case 'repo':
