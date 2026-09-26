@@ -84,8 +84,8 @@ test('python: decorator, guard, try, collapsed except, comment attached to next 
     '    # found',
     '    return user',
   ])
-  assert.deepEqual(blockLines(c), [[1], [2], [3, 4], [5], [6], [7, 8, 9], [10, 11]])
-  assert.deepEqual(units(c), [['function', 'get_user', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7']]])
+  assert.deepEqual(blockLines(c), [[1, 2], [3, 4], [5], [6], [7, 8, 9], [10, 11]])
+  assert.deepEqual(units(c), [['function', 'get_user', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6']]])
 })
 
 test('python: with header stays with the with statement', async () => {

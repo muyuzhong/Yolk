@@ -48,98 +48,108 @@ function lastRow(node: Node): number {
 export async function chunkFile(spec: LangSpec, source: string, hunks: HunkRange[]): Promise<Chunks> {
   const { parser, tags } = await loadGrammar(spec)
   const tree = parser.parse(source)!
-  const lines = source.split('\n')
+  try {
+    const lines = source.split('\n')
 
-  // Comments, attributes and decorators belong to the statement they annotate.
-  const isAttached = (n: Node) => /comment$/.test(n.type) || spec.attachToNext.includes(n.type)
-  const isUnit = (n: Node) =>
-    n.isNamed &&
-    !isAttached(n) &&
-    !spec.notUnits.includes(n.type) &&
-    (UNIT_TYPE.test(n.type) || spec.extraUnits.includes(n.type) || spec.unitParents.includes(n.parent?.type ?? ''))
-  const isCollapsed = (n: Node) =>
-    spec.collapse.includes(n.type) || lastRow(n) - n.startPosition.row + 1 <= COLLAPSE_MAX_LINES
+    // Comments, attributes and decorators belong to the statement they annotate.
+    const isAttached = (n: Node) => /comment$/.test(n.type) || spec.attachToNext.includes(n.type)
+    const isUnit = (n: Node) =>
+      n.isNamed &&
+      !isAttached(n) &&
+      !spec.notUnits.includes(n.type) &&
+      (UNIT_TYPE.test(n.type) || spec.extraUnits.includes(n.type) || spec.unitParents.includes(n.parent?.type ?? ''))
+    const isCollapsed = (n: Node) =>
+      spec.collapse.includes(n.type) || lastRow(n) - n.startPosition.row + 1 <= COLLAPSE_MAX_LINES
 
-  // Deepest unit starting on each row, so `} catch (e) {` goes to the catch clause.
-  const startsAt = new Map<number, { node: Node; depth: number }>()
-  const anonymous: Node[] = []
-  const walk = (n: Node, depth: number) => {
-    if (isUnit(n)) {
-      const row = n.startPosition.row
-      const current = startsAt.get(row)
-      if (!current || depth > current.depth) startsAt.set(row, { node: n, depth })
+    // Deepest unit starting on each row, so `} catch (e) {` goes to the catch clause.
+    const startsAt = new Map<number, { node: Node; depth: number }>()
+    const anonymous: Node[] = []
+    const walk = (n: Node, depth: number) => {
+      if (isUnit(n)) {
+        const row = n.startPosition.row
+        const current = startsAt.get(row)
+        if (!current || depth > current.depth) startsAt.set(row, { node: n, depth })
+      }
+      if (spec.anonymousFunctions.includes(n.type) && lastRow(n) - n.startPosition.row + 1 >= ANONYMOUS_UNIT_MIN_LINES) {
+        anonymous.push(n)
+      }
+      for (const child of n.namedChildren) if (child) walk(child, depth + 1)
     }
-    if (spec.anonymousFunctions.includes(n.type) && lastRow(n) - n.startPosition.row + 1 >= ANONYMOUS_UNIT_MIN_LINES) {
-      anonymous.push(n)
+    walk(tree.rootNode, 0)
+
+    const annotated = (n: Node): Node | null => {
+      let next = n.nextNamedSibling
+      while (next && isAttached(next)) next = next.nextNamedSibling
+      return next && isUnit(next) ? next : null
     }
-    for (const child of n.namedChildren) if (child) walk(child, depth + 1)
-  }
-  walk(tree.rootNode, 0)
 
-  const annotated = (n: Node): Node | null => {
-    let next = n.nextNamedSibling
-    while (next && isAttached(next)) next = next.nextNamedSibling
-    return next && isUnit(next) ? next : null
-  }
-
-  const ownerOf = (line: number): Node | null => {
-    const row = line - 1
-    const column = (lines[row] ?? '').search(/\S/)
-    if (column < 0) return null
-    let node: Node | null = startsAt.get(row)?.node ?? null
-    if (!node) {
-      node = tree.rootNode.descendantForPosition({ row, column })
-      for (let n: Node | null = node; n && !isUnit(n); n = n.parent) {
-        if (isAttached(n)) {
-          node = annotated(n) ?? node
-          break
+    const ownerOf = (line: number): Node | null => {
+      const row = line - 1
+      const column = (lines[row] ?? '').search(/\S/)
+      if (column < 0) return null
+      let node: Node | null = startsAt.get(row)?.node ?? null
+      if (!node) {
+        node = tree.rootNode.descendantForPosition({ row, column })
+        for (let n: Node | null = node; n && !isUnit(n); n = n.parent) {
+          if (isAttached(n)) {
+            node = annotated(n) ?? node
+            break
+          }
         }
       }
+      while (node && !isUnit(node)) node = node.parent
+      let owner = node
+      for (let n = node; n; n = n.parent) if (isUnit(n) && isCollapsed(n)) owner = n
+      return owner?.parent && spec.wrappers.includes(owner.parent.type) ? owner.parent : owner
     }
-    while (node && !isUnit(node)) node = node.parent
-    let owner = node
-    for (let n = node; n; n = n.parent) if (isUnit(n) && isCollapsed(n)) owner = n
-    return owner
-  }
 
-  // Group added lines by owner, in line order.
-  const byOwner = new Map<number, { node: Node; lines: number[] }>()
-  const unowned: number[] = []
-  for (const line of hunks.flatMap((h) => h.added)) {
-    const owner = ownerOf(line)
-    if (!owner) {
-      if (lines[line - 1]?.trim()) unowned.push(line)
-      continue
+    // Group added lines by owner, in line order.
+    const byOwner = new Map<number, { node: Node; lines: number[] }>()
+    const unowned: number[] = []
+    for (const line of hunks.flatMap((h) => h.added)) {
+      const owner = ownerOf(line)
+      if (!owner) {
+        if (lines[line - 1]?.trim()) unowned.push(line)
+        continue
+      }
+      const group = byOwner.get(owner.id) ?? { node: owner, lines: [] }
+      group.lines.push(line)
+      byOwner.set(owner.id, group)
     }
-    const group = byOwner.get(owner.id) ?? { node: owner, lines: [] }
-    group.lines.push(line)
-    byOwner.set(owner.id, group)
-  }
 
-  const functions = functionRanges(spec, tags.matches(tree.rootNode), anonymous, lines)
-  const units = new Map<string, Unit>()
-  const blocks: Block[] = []
-  for (const { node, lines: blockLines } of byOwner.values()) {
-    const id = `B${blocks.length + 1}`
-    const start = node.startPosition.row + 1
-    const end = lastRow(node) + 1
-    const fn = functions
-      .filter((f) => f.start <= start && f.end >= end)
-      .sort((a, b) => a.end - a.start - (b.end - b.start))[0]
-    const hunkIndex = hunks.findIndex((h) => h.start <= blockLines[0] && blockLines[0] <= h.end)
-    const key = fn ? `fn:${fn.id}` : `hunk:${hunkIndex}`
-    let unit = units.get(key)
-    if (!unit) {
-      unit = fn
-        ? { id: `U${units.size + 1}`, kind: 'function', name: fn.name, start: fn.start, end: fn.end, blocks: [] }
-        : { id: `U${units.size + 1}`, kind: 'toplevel', name: '', start: hunks[hunkIndex].start, end: hunks[hunkIndex].end, blocks: [] }
-      units.set(key, unit)
+    const functions = functionRanges(spec, tags.matches(tree.rootNode), anonymous, lines)
+    const units = new Map<string, Unit>()
+    const blocks: Block[] = []
+    for (const { node, lines: blockLines } of byOwner.values()) {
+      const start = node.startPosition.row + 1
+      const end = lastRow(node) + 1
+      const fn = functions
+        .filter((f) => f.start <= start && f.end >= end)
+        .sort((a, b) => a.end - a.start - (b.end - b.start))[0]
+      // Top-level blocks stay within a hunk; function blocks can span hunks.
+      const regions = fn ? [blockLines] : hunks.map((h) => blockLines.filter((line) => h.start <= line && line <= h.end)).filter((lines) => lines.length)
+      for (const region of regions) {
+        const id = `B${blocks.length + 1}`
+        const hunkIndex = hunks.findIndex((h) => h.start <= region[0] && region[0] <= h.end)
+        const key = fn ? `fn:${fn.id}` : `hunk:${hunkIndex}`
+        let unit = units.get(key)
+        if (!unit) {
+          unit = fn
+            ? { id: `U${units.size + 1}`, kind: 'function', name: fn.name, start: fn.start, end: fn.end, blocks: [] }
+            : { id: `U${units.size + 1}`, kind: 'toplevel', name: '', start: hunks[hunkIndex].start, end: hunks[hunkIndex].end, blocks: [] }
+          units.set(key, unit)
+        }
+        unit.start = Math.min(unit.start, region[0])
+        unit.end = Math.max(unit.end, region[region.length - 1])
+        unit.blocks.push(id)
+        blocks.push({ id, lines: region, nodeType: node.type, unit: unit.id })
+      }
     }
-    unit.blocks.push(id)
-    blocks.push({ id, lines: blockLines, nodeType: node.type, unit: unit.id })
-  }
 
-  return { blocks, units: [...units.values()], unowned, hasError: tree.rootNode.hasError }
+    return { blocks, units: [...units.values()], unowned, hasError: tree.rootNode.hasError }
+  } finally {
+    tree.delete()
+  }
 }
 
 interface FunctionRange {
@@ -152,6 +162,7 @@ interface FunctionRange {
 /** Named functions from tags.scm, plus long anonymous functions named after their first line. */
 function functionRanges(spec: LangSpec, matches: QueryMatch[], anonymous: Node[], lines: string[]): FunctionRange[] {
   const ranges = new Map<number, FunctionRange>()
+  const named = new Set<number>()
   const add = (node: Node, name: string) =>
     ranges.set(node.id, { id: node.id, name, start: node.startPosition.row + 1, end: lastRow(node) + 1 })
 
@@ -159,15 +170,14 @@ function functionRanges(spec: LangSpec, matches: QueryMatch[], anonymous: Node[]
     const def = match.captures.find((c) => c.name === 'definition.function' || c.name === 'definition.method')
     if (!def) continue
     let node = def.node
+    named.add((node.childForFieldName('value') ?? node.childForFieldName('right') ?? node).id)
     if (node.parent && spec.wrappers.includes(node.parent.type)) node = node.parent
     add(node, match.captures.find((c) => c.name === 'name')?.node.text ?? '')
   }
-  const named = [...ranges.values()]
   for (const node of anonymous) {
     const start = node.startPosition.row + 1
-    const end = lastRow(node) + 1
     // `const f = () => {}` is already a named function from tags.scm.
-    if (named.some((f) => f.start === start && f.end === end)) continue
+    if (named.has(node.id)) continue
     add(node, lines[start - 1].trim().slice(0, 80))
   }
   return [...ranges.values()]
