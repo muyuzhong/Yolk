@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { chunkPullRequest, judgeFiles } from '../core/analyze'
 import { suggestsRemoval } from '../core/judgment'
 import { explain, explainMessages } from '../core/llm'
-import { getConvention, searchPullRequests } from '../core/sources/gh'
+import { currentUser, getConvention, listPullRequests, listRepositories, type PullRequestState } from '../core/sources/gh'
 import type { ReviewProgress, ReviewStart, SettingsUpdate } from '../shared/api'
 import { llmConfig, loadSettings, saveSettings, settingsView } from './settings'
 
@@ -114,12 +114,16 @@ app.whenReady().then(() => {
     explanations.clear()
     return settings
   })
-  ipcMain.handle('prs:list', async () => {
-    const [reviewRequested, authored] = await Promise.all([
-      searchPullRequests('--review-requested=@me'),
-      searchPullRequests('--author=@me'),
-    ])
-    return { reviewRequested, authored }
+  ipcMain.handle('repos:list', () => listRepositories())
+  let login: Promise<string> | undefined
+  ipcMain.handle('prs:list', async (_event, repo: string, state: PullRequestState) => {
+    // Looked up once; a failed lookup is forgotten so the next list asks again.
+    login ??= currentUser().catch((error) => {
+      login = undefined
+      throw error
+    })
+    const [user, pullRequests] = await Promise.all([login, listPullRequests(repo, state)])
+    return { login: user, pullRequests }
   })
   ipcMain.handle('review:start', (event, url: string, reviewId: string) => startReview(event.sender, url, reviewId))
   ipcMain.handle('review:explain', (event, reviewId: string, fileIndex: number, blockId: string) =>

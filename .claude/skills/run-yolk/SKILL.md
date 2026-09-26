@@ -65,6 +65,20 @@ quit
 EOF
 ```
 
+Going through a repository, the way a reviewer does (home -> repository -> PR list -> review -> back):
+
+```bash
+. ~/.config/typesafe/env && node .claude/skills/run-yolk/driver.mjs <<'EOF'
+launch
+repo honojs/hono
+prs merged
+pr 5377
+wait-judged
+home
+quit
+EOF
+```
+
 Hover explanations against the mock. Hovering the same block again is served from the main-process cache, so
 the mock log shows one request per block:
 
@@ -106,8 +120,11 @@ profile in `/tmp/yolk-shots/userdata`, so `~/.config/yolk` is never touched.
 
 | command | what it does |
 |---|---|
-| `launch` | start the built app, wait for the home page and its `gh` PR lists |
-| `open <PR URL>` | paste the URL on the home page, wait for the chunked diff (`opened: …`) |
+| `launch` | start the built app, wait for the home page and its `gh` repository list |
+| `repo <owner/repo>` | open a repository from the home input, print its open PRs |
+| `prs [open\|merged\|closed\|all]` | switch the repository page's state tab, print up to 8 PRs |
+| `pr <number>` | open that PR from the repository list, wait for the chunked diff (`opened: …`) |
+| `open <PR URL>` | paste a PR URL into the home input, wait for the chunked diff (`opened: …`) |
 | `wait-judged [seconds]` | wait until the header says 判断完成 / 判断失败, print it (default 120 s) |
 | `status` | print the header status now |
 | `files` | file list with per-category line counts (核心 / 防御 / 支撑 / 测试) |
@@ -115,7 +132,7 @@ profile in `/tmp/yolk-shots/userdata`, so `~/.config/yolk` is never touched.
 | `hover-block <core\|defense\|support\|test\|pending>` | hover the first line of that category, print the tooltip |
 | `explain <category>` | hover like `hover-block`, wait for the general model's explanation, print it with the block id |
 | `core-only` | toggle 只看核心, print how many fold rows exist |
-| `settings` / `home` | navigate |
+| `settings` / `home` | navigate (`home` clicks back until the home page; a review goes back to its repository first) |
 | `ss [name]` | screenshot to `$SCREENSHOT_DIR/<name>.png` |
 | `click <css>` / `text [css]` / `eval <js>` | generic DOM helpers |
 | `quit` | close the app and exit |
