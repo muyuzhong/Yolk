@@ -18,26 +18,25 @@
   flex: 1;
 }
 
-/* Legend chips and per-file counts */
+/* Category legend: a colored dot, the name and a count, no chip behind them. */
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: var(--spacing-1);
-  height: 22px;
-  padding: 0 var(--spacing-2);
-  border-radius: var(--radius-full);
-  background: var(--cbg);
-  color: var(--ct);
+  gap: var(--spacing-1-5);
+  color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
-  font-weight: 500;
   white-space: nowrap;
 }
 .legend-item::before {
   content: '';
-  width: 8px;
-  height: 8px;
+  width: var(--spacing-2);
+  height: var(--spacing-2);
   border-radius: var(--radius-full);
   background: var(--c);
+}
+.legend-count {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
 }
 .file-counts {
   display: inline-flex;
@@ -114,16 +113,17 @@
 }
 
 /* Review header */
+.review-header {
+  padding: var(--spacing-4) var(--spacing-6);
+}
 .review-toolbar {
-  flex-wrap: wrap;
-  row-gap: var(--spacing-2);
+  flex-shrink: 0;
 }
 .status {
   white-space: nowrap;
 }
-.status-progress {
-  display: inline-block;
-  width: 120px;
+.status-count {
+  font-variant-numeric: tabular-nums;
 }
 .status-error {
   max-width: 360px;

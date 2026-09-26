@@ -9,7 +9,6 @@ import { Kbd } from '@astryxdesign/core/Kbd'
 import { Layout, LayoutContent, LayoutHeader, LayoutPanel } from '@astryxdesign/core/Layout'
 import { List, ListItem } from '@astryxdesign/core/List'
 import { Markdown } from '@astryxdesign/core/Markdown'
-import { ProgressBar } from '@astryxdesign/core/ProgressBar'
 import { Spinner } from '@astryxdesign/core/Spinner'
 import { Switch } from '@astryxdesign/core/Switch'
 import { Text } from '@astryxdesign/core/Text'
@@ -193,32 +192,33 @@ export function Review({ repo, number }: { repo: string; number: number }) {
       <Layout
         header={
           <LayoutHeader hasDivider>
-            <VStack gap={2} padding={4} className="review-header">
-              <HStack gap={2}>
+            <HStack gap={4} align="center" wrap="wrap" className="review-header">
+              <VStack gap={1} className="page-heading">
                 <Heading level={1} maxLines={1}>
                   {pr.title}
                 </Heading>
-              </HStack>
-              <HStack gap={3} className="review-toolbar">
-                <Text type="supporting" className="review-title">
-                  {repo} #{pr.number} · {files.length} 个文件
-                </Text>
-                <span className="spacer" />
-                <HStack gap={1.5} className="legend">
+                <HStack gap={2} align="center" wrap="wrap">
+                  <Text type="supporting" className="review-title">
+                    {repo} #{pr.number} · {files.length} 个文件
+                  </Text>
+                  <JudgeStatus status={status} judged={judgedUnits} total={totalUnits} />
+                </HStack>
+              </VStack>
+              <HStack gap={4} align="center" className="review-toolbar">
+                <HStack gap={3} align="center" className="legend">
                   {SHOWN.map((c) => (
-                    <span key={c} className={`legend-item cat-${c}`}>
-                      {LABEL[c]} {totals[c] ?? 0}
-                    </span>
+                    <Text key={c} type="supporting" className={`legend-item cat-${c}`}>
+                      {LABEL[c]} <Text color="inherit" className="legend-count">{totals[c] ?? 0}</Text>
+                    </Text>
                   ))}
                 </HStack>
-                <HStack gap={1} className="toggle">
+                <HStack gap={1} align="center" className="toggle">
                   <Switch size="sm" label="只看核心" value={coreOnly} onChange={setCoreOnly} />
                   <Kbd keys="c" />
                 </HStack>
                 <Button size="sm" variant="ghost" label="审阅约定" icon={<Icon icon={ScrollText} size="sm" />} onClick={() => setShowPolicy(true)} />
-                <JudgeStatus status={status} judged={judgedUnits} total={totalUnits} />
               </HStack>
-            </VStack>
+            </HStack>
           </LayoutHeader>
         }
         start={
@@ -306,8 +306,8 @@ export function Review({ repo, number }: { repo: string; number: number }) {
 function JudgeStatus({ status, judged, total }: { status: Status; judged: number; total: number }) {
   if (status.state === 'error') {
     return (
-      <HStack gap={1} className="status">
-        <Icon icon={CircleAlert} size="sm" color="error" />
+      <HStack gap={1} align="center" className="status">
+        <Icon icon={CircleAlert} size="xsm" color="error" />
         <Text type="supporting" color="inherit" maxLines={1} className="status-error">
           判断失败：{status.message}
         </Text>
@@ -316,8 +316,9 @@ function JudgeStatus({ status, judged, total }: { status: Status; judged: number
   }
   if (status.state === 'done') {
     return (
-      <HStack gap={1} className="status">
-        <Icon icon={CircleCheck} size="sm" color="success" />
+      <HStack gap={1} align="center" className="status">
+        <Text type="supporting">·</Text>
+        <Icon icon={CircleCheck} size="xsm" color="success" />
         <Text type="supporting">
           判断完成 · {status.model || 'jev'} · {(status.inputTokens / 1000).toFixed(1)}k token
         </Text>
@@ -325,13 +326,12 @@ function JudgeStatus({ status, judged, total }: { status: Status; judged: number
     )
   }
   return (
-    <HStack gap={2} className="status">
-      <Text type="supporting">
+    <HStack gap={1} align="center" className="status">
+      <Text type="supporting">·</Text>
+      <Spinner size="sm" />
+      <Text type="supporting" className="status-count">
         Jev 判断中 {judged}/{total}
       </Text>
-      <span className="status-progress">
-        <ProgressBar label="Jev 判断进度" isLabelHidden value={judged} max={Math.max(total, 1)} />
-      </span>
     </HStack>
   )
 }
