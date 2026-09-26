@@ -147,7 +147,7 @@ npm run chunk -- https://github.com/tokio-rs/axum/pull/3886
 . ~/.config/typesafe/env && npm run judge -- https://github.com/tokio-rs/axum/pull/3886
 ```
 
-`npm run judge -- <url> --convention <file>` judges against a convention file instead of the repo's `.yolk.md`.
+`npm run judge -- <url> --convention <file>` judges against a convention file; without it the run has no convention (the app takes conventions from its settings, never from the repository).
 
 ## Test
 

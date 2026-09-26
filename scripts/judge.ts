@@ -24,7 +24,7 @@ const result = await judgePullRequest(url, { policy })
 const seconds = ((performance.now() - started) / 1000).toFixed(1)
 
 console.log(`${result.pr.owner}/${result.pr.repo}#${result.pr.number}  ${result.pr.title}`)
-console.log(dim(`模型 ${result.model} · 输入 ${result.inputTokens} token · 耗时 ${seconds}s · 约定：${conventionPath ?? (result.policy ? '.yolk.md' : '无')}\n`))
+console.log(dim(`模型 ${result.model} · 输入 ${result.inputTokens} token · 耗时 ${seconds}s · 约定：${conventionPath ?? '无'}\n`))
 for (const file of result.files) printFile(file)
 
 function printFile(file: FileResult) {

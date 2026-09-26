@@ -4,7 +4,7 @@ import { parseDiff, type FileDiff } from './diff'
 import { judgeUnit } from './jev'
 import type { Judgment } from './judgment'
 import { languageFor } from './languages'
-import { getConvention, getFileAt, getPullRequest, getPullRequestDiff, type PullRequest } from './sources/gh'
+import { getFileAt, getPullRequest, getPullRequestDiff, type PullRequest } from './sources/gh'
 import { inlineTestRanges, isTestPath } from './testcode'
 
 export interface FileResult {
@@ -92,7 +92,7 @@ export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy,
 /** Chunks and judges a PR in one go, for the terminal scripts. The Jev key comes from TYPESAFE_API_KEY. */
 export async function judgePullRequest(url: string, options: { policy?: string } = {}) {
   const { pr, files } = await chunkPullRequest(url)
-  const policy = options.policy ?? (await getConvention(pr))
+  const policy = options.policy ?? null
   const { model, inputTokens } = await judgeFiles(pr, files, { policy, client: new TypeSafeClient() })
   return { pr, files, policy, model, inputTokens }
 }

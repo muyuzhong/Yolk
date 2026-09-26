@@ -2,22 +2,24 @@ import { app, safeStorage } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { LlmConfig } from '../core/llm'
-import type { SettingsUpdate, SettingsView } from '../shared/api'
+import type { ConventionSource, Conventions, SettingsUpdate, SettingsView } from '../shared/api'
 
 export interface Settings {
   jev: { model: string; apiKey: string }
   llm: { baseURL: string; model: string; apiKey: string }
 }
 
-/** On disk the keys are encrypted with the OS keychain via safeStorage and stored as base64. */
+/** On disk the keys are encrypted with the OS keychain via safeStorage and stored as base64; conventions are plain text. */
 interface StoredSettings {
   jev: { model: string; apiKey: string }
   llm: { baseURL: string; model: string; apiKey: string }
+  conventions: Conventions
 }
 
 const DEFAULTS: StoredSettings = {
   jev: { model: 'jev-latest', apiKey: '' },
   llm: { baseURL: '', model: '', apiKey: '' },
+  conventions: { default: '', repos: {} },
 }
 
 const file = () => join(app.getPath('userData'), 'settings.json')
@@ -27,7 +29,11 @@ const decrypt = (stored: string) => (stored ? safeStorage.decryptString(Buffer.f
 async function readStored(): Promise<StoredSettings> {
   try {
     const stored = JSON.parse(await readFile(file(), 'utf8'))
-    return { jev: { ...DEFAULTS.jev, ...stored.jev }, llm: { ...DEFAULTS.llm, ...stored.llm } }
+    return {
+      jev: { ...DEFAULTS.jev, ...stored.jev },
+      llm: { ...DEFAULTS.llm, ...stored.llm },
+      conventions: { default: stored.conventions?.default ?? '', repos: { ...stored.conventions?.repos } },
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULTS
     throw error
@@ -68,6 +74,7 @@ export async function settingsView(): Promise<SettingsView> {
       hasKey: Boolean(stored.llm.apiKey),
       ready: Boolean((stored.llm.baseURL || fallback.baseURL) && (stored.llm.apiKey || fallback.apiKey) && (stored.llm.model || fallback.model)),
     },
+    conventions: stored.conventions,
   }
 }
 
@@ -80,7 +87,26 @@ export async function saveSettings(update: SettingsUpdate): Promise<SettingsView
       model: update.llm.model,
       apiKey: update.llm.apiKey === undefined ? stored.llm.apiKey : encrypt(update.llm.apiKey),
     },
+    conventions: stored.conventions,
   }
   await writeFile(file(), JSON.stringify(next, null, 2))
   return settingsView()
+}
+
+export async function saveConvention(repo: string | null, text: string): Promise<SettingsView> {
+  const stored = await readStored()
+  const trimmed = text.trim()
+  const { [repo ?? '']: _, ...others } = stored.conventions.repos
+  const conventions: Conventions =
+    repo === null ? { ...stored.conventions, default: trimmed } : { ...stored.conventions, repos: trimmed ? { ...others, [repo]: trimmed } : others }
+  await writeFile(file(), JSON.stringify({ ...stored, conventions }, null, 2))
+  return settingsView()
+}
+
+/** The convention a repository's reviews are judged by: its own entry, else the default, else none. */
+export async function conventionFor(repo: string): Promise<{ policy: string | null; policySource: ConventionSource | null }> {
+  const { conventions } = await readStored()
+  if (conventions.repos[repo]) return { policy: conventions.repos[repo], policySource: 'repo' }
+  if (conventions.default) return { policy: conventions.default, policySource: 'default' }
+  return { policy: null, policySource: null }
 }

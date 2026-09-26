@@ -47,15 +47,8 @@ export function getFileAt(pr: PullRequest, path: string, ref: string): Promise<s
   ])
 }
 
-/** The project convention `.yolk.md`, read from the base so a PR cannot change the rules it is judged by. */
-export async function getConvention(pr: PullRequest): Promise<string | null> {
-  try {
-    return await getFileAt(pr, '.yolk.md', pr.baseSha)
-  } catch (error) {
-    if (String((error as { stderr?: string }).stderr).includes('HTTP 404')) return null
-    throw error
-  }
-}
+/** OWNER/REPO on github.com, HOST/OWNER/REPO elsewhere: the key the app uses for a repository everywhere. */
+export const repoKey = (pr: Pick<PullRequest, 'host' | 'owner' | 'repo'>) => `${pr.host === 'github.com' ? '' : `${pr.host}/`}${pr.owner}/${pr.repo}`
 
 export interface RepositorySummary {
   fullName: string

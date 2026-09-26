@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url'
 import { chunkPullRequest, judgeFiles } from '../core/analyze'
 import { suggestsRemoval } from '../core/judgment'
 import { explain, explainMessages } from '../core/llm'
-import { currentUser, getConvention, listPullRequests, listRepositories, type PullRequestState } from '../core/sources/gh'
+import { currentUser, listPullRequests, listRepositories, repoKey, type PullRequestState } from '../core/sources/gh'
 import type { ReviewProgress, ReviewStart, SettingsUpdate } from '../shared/api'
-import { llmConfig, loadSettings, saveSettings, settingsView } from './settings'
+import { conventionFor, llmConfig, loadSettings, saveConvention, saveSettings, settingsView } from './settings'
 
 const reviews = new Map<number, { reviewId: string; controller: AbortController }>()
 /** The review each window shows; kept after judging ends because hover explanations read it. */
@@ -51,11 +51,12 @@ async function startReview(sender: WebContents, url: string, reviewId: string): 
   try {
     const { pr, files } = await chunkPullRequest(url)
     signal.throwIfAborted()
-    const policy = await getConvention(pr)
+    const { policy, policySource } = await conventionFor(repoKey(pr))
     signal.throwIfAborted()
-    shown.set(senderId, { reviewId, pr, files, policy })
-    void judgeInBackground(sender, reviewId, { pr, files, policy }, signal)
-    return { pr, files, policy }
+    const start: ReviewStart = { pr, files, policy, policySource }
+    shown.set(senderId, { reviewId, ...start })
+    void judgeInBackground(sender, reviewId, start, signal)
+    return start
   } catch (error) {
     controller.abort()
     throw error
@@ -116,6 +117,11 @@ app.whenReady().then(() => {
   ipcMain.handle('settings:get', () => settingsView())
   ipcMain.handle('settings:save', async (_event, update: SettingsUpdate) => {
     const settings = await saveSettings(update)
+    explanations.clear()
+    return settings
+  })
+  ipcMain.handle('settings:convention', async (_event, repo: string | null, text: string) => {
+    const settings = await saveConvention(repo, text)
     explanations.clear()
     return settings
   })

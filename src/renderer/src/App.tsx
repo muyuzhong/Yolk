@@ -97,7 +97,7 @@ export function App() {
           {route.page === 'repos' && <RepositoryList />}
           {route.page === 'repo' && <Repository key={route.repo} repo={route.repo} />}
           {route.page === 'review' && <Review key={`${route.repo}#${route.number}`} repo={route.repo} number={route.number} />}
-          {route.page === 'settings' && <Settings />}
+          {route.page === 'settings' && <Settings repo={route.repo} />}
         </AppShell>
       </Theme>
     </InternationalizationProvider>

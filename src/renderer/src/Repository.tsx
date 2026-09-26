@@ -16,10 +16,10 @@ import { Text } from '@astryxdesign/core/Text'
 import { Timestamp } from '@astryxdesign/core/Timestamp'
 import { Token } from '@astryxdesign/core/Token'
 import { VStack } from '@astryxdesign/core/VStack'
-import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, RotateCw, ScanEye } from 'lucide-react'
+import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, RotateCw, ScanEye, ScrollText } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { PullRequestState, PullRequestSummary } from '../../core/sources/gh'
-import type { PullRequestList } from '../../shared/api'
+import type { Conventions, PullRequestList } from '../../shared/api'
 import { DiffStat } from './DiffStat'
 import { DitherBackdrop } from './DitherBackdrop'
 import { FilterField } from './FilterField'
@@ -80,6 +80,11 @@ export function Repository({ repo }: { repo: string }) {
   const [error, setError] = useState<string>()
   const [filter, setFilter] = useState('')
   const [attempt, setAttempt] = useState(0)
+  const [conventions, setConventions] = useState<Conventions>()
+
+  useEffect(() => {
+    window.yolk.getSettings().then((settings) => setConventions(settings.conventions))
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -120,6 +125,16 @@ export function Repository({ repo }: { repo: string }) {
                   {!list ? '读取中…' : words ? `${matching.length} / ${list.pullRequests.length} 个匹配` : summary(state, list.pullRequests, login)}
                 </Text>
               </VStack>
+              {conventions && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<Icon icon={ScrollText} size="sm" />}
+                  label={conventions.repos[repo] ? '审阅约定 · 本仓库' : conventions.default ? '审阅约定 · 默认' : '审阅约定 · 未设置'}
+                  tooltip="Jev 按这份约定标出建议删除（✂）的代码"
+                  onClick={() => navigate({ page: 'settings', repo })}
+                />
+              )}
               <IconButton variant="ghost" label="刷新" tooltip="刷新" icon={<Icon icon={RotateCw} size="sm" />} onClick={() => setAttempt((n) => n + 1)} />
             </HStack>
             <HStack gap={3} align="center" wrap="wrap">
