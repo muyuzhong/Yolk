@@ -56,3 +56,27 @@ export async function getConvention(pr: PullRequest): Promise<string | null> {
     throw error
   }
 }
+
+export interface PullRequestSummary {
+  url: string
+  number: number
+  title: string
+  repository: string
+  author: string
+  updatedAt: string
+}
+
+/** Open PRs matching a `gh search prs` qualifier, e.g. `--review-requested=@me` or `--author=@me`. */
+export async function searchPullRequests(qualifier: string): Promise<PullRequestSummary[]> {
+  const prs = JSON.parse(
+    await gh(['search', 'prs', qualifier, '--state=open', '--limit=50', '--json', 'number,title,url,repository,author,updatedAt']),
+  )
+  return prs.map((pr: { url: string; number: number; title: string; repository: { nameWithOwner: string }; author: { login: string }; updatedAt: string }) => ({
+    url: pr.url,
+    number: pr.number,
+    title: pr.title,
+    repository: pr.repository.nameWithOwner,
+    author: pr.author.login,
+    updatedAt: pr.updatedAt,
+  }))
+}
