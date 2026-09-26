@@ -22,7 +22,8 @@ export interface LineRow {
 export interface FoldRow {
   kind: 'fold'
   key: string
-  counts: Partial<Record<Category, number>>
+  lines: number
+  counts: Partial<Record<Category | 'deleted' | 'context' | 'uncertain', number>>
 }
 
 export interface HunkRow {
@@ -59,18 +60,43 @@ export function blockStates(
   return states
 }
 
-const FOLDABLE: Category[] = ['defense', 'support']
+/** Core blocks plus their syntax, one nearby unchanged line, and old lines from the same edit. */
+function focusLines(file: FileResult, states: Map<string, BlockState>) {
+  const core = new Set<number>()
+  const keep = new Set<number>()
+  for (const block of file.chunks?.blocks ?? []) {
+    const state = states.get(block.id)
+    if (state?.category !== 'core' || state.unsure) continue
+    const unit = file.chunks!.units.find((unit) => unit.id === block.unit)
+    for (const line of block.lines) core.add(line)
+    for (const line of [...block.lines, ...(block.context ?? (unit ? [unit.start, unit.end] : []))]) keep.add(line)
+  }
+  for (const hunk of file.diff.hunks) for (const line of hunk.lines) {
+    if (line.kind === 'ctx' && (core.has(line.newNo! - 1) || core.has(line.newNo! + 1))) keep.add(line.newNo!)
+  }
+  return { core, keep }
+}
 
-/**
- * Rows to render for one file. With `coreOnly`, runs of confidently judged defense/support lines
- * (and blank lines between them) collapse into one fold row unless their key is in `expanded`.
- * Deleted and context lines always stay visible and end a run.
- */
+/** Focus on core implementation; every hidden region can still be expanded. */
 export function buildRows(file: FileResult, states: Map<string, BlockState>, coreOnly: boolean, expanded: Set<string>): Row[] {
   const blockOf = new Map<number, string>()
   for (const block of file.chunks?.blocks ?? []) for (const line of block.lines) blockOf.set(line, block.id)
 
   const rows: Row[] = []
+  const { core, keep } = coreOnly ? focusLines(file, states) : { core: new Set<number>(), keep: new Set<number>() }
+  const hunks = file.diff.hunks.map((hunk, h) => ({ ...hunk, key: `h${h}`, position: Number(/\+(\d+)/.exec(hunk.header)?.[1] ?? 0) }))
+  // Syntax may be outside the diff's three context lines. Add only those missing lines, in source order.
+  const present = new Set(file.diff.hunks.flatMap((hunk) => hunk.lines.map((line) => line.newNo)))
+  let extra: (typeof hunks)[number] | undefined
+  for (const line of [...keep].sort((a, b) => a - b)) {
+    if (present.has(line) || file.source?.[line - 1] === undefined) continue
+    if (!extra || extra.lines.at(-1)?.newNo !== line - 1) {
+      extra = { key: `context${line}`, header: '⋯ 结构上下文', position: line, lines: [] }
+      hunks.push(extra)
+    }
+    extra.lines.push({ kind: 'ctx', text: file.source[line - 1], newNo: line, oldNo: null })
+  }
+  hunks.sort((a, b) => a.position - b.position)
   const seen = new Set<string>()
   const push = (row: LineRow) => {
     row.firstOfBlock = row.block !== undefined && !seen.has(row.block)
@@ -78,23 +104,25 @@ export function buildRows(file: FileResult, states: Map<string, BlockState>, cor
     rows.push(row)
   }
 
-  file.diff.hunks.forEach((hunk, h) => {
-    rows.push({ kind: 'hunk', key: `h${h}`, header: hunk.header })
+  hunks.forEach((hunk, h) => {
+    rows.push({ kind: 'hunk', key: hunk.key, header: hunk.header })
     let run: LineRow[] = []
     const flush = () => {
-      let end = run.length
-      while (end > 0 && run[end - 1].category === 'none') end--
-      const folded = run.slice(0, end)
-      if (folded.length) {
-        const key = folded[0].key
-        if (expanded.has(key)) folded.forEach(push)
+      if (run.length) {
+        const key = run[0].key
+        if (expanded.has(key)) run.forEach(push)
         else {
           const counts: FoldRow['counts'] = {}
-          for (const row of folded) if (row.line.text.trim()) counts[row.category] = (counts[row.category] ?? 0) + 1
-          rows.push({ kind: 'fold', key, counts })
+          for (const row of run) {
+            if (!row.line.text.trim()) continue
+            const category = row.line.kind === 'del' ? 'deleted'
+              : row.unsure || row.category === 'pending' || row.category === 'failed' || (row.line.kind === 'add' && !row.block) ? 'uncertain'
+              : row.category === 'none' ? 'context' : row.category
+            counts[category] = (counts[category] ?? 0) + 1
+          }
+          rows.push({ kind: 'fold', key, lines: run.length, counts })
         }
       }
-      run.slice(end).forEach(push)
       run = []
     }
 
@@ -103,7 +131,7 @@ export function buildRows(file: FileResult, states: Map<string, BlockState>, cor
       const state = block ? states.get(block) : undefined
       return {
         kind: 'line',
-        key: `h${h}l${i}`,
+        key: `${hunk.key}l${i}`,
         hunk: h,
         index: i,
         line,
@@ -116,10 +144,21 @@ export function buildRows(file: FileResult, states: Map<string, BlockState>, cor
     })
     fillBlankLines(lineRows)
 
+    const oldCore = new Set<LineRow>()
+    let edit: LineRow[] = []
+    const endEdit = () => {
+      if (edit.some((row) => row.line.kind === 'add' && core.has(row.line.newNo!))) {
+        for (const row of edit) if (row.line.kind === 'del') oldCore.add(row)
+      }
+      edit = []
+    }
+    for (const row of lineRows) {
+      if (row.line.kind === 'ctx') endEdit()
+      else edit.push(row)
+    }
+    endEdit()
     lineRows.forEach((row) => {
-      const foldable = coreOnly && FOLDABLE.includes(row.category) && !row.unsure
-      const blankBetween = isBlankAdd(row) && row.category === 'none' && run.length > 0
-      if (foldable || blankBetween) run.push(row)
+      if (coreOnly && !keep.has(row.line.newNo!) && !oldCore.has(row)) run.push(row)
       else {
         flush()
         push(row)

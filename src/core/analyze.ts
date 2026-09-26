@@ -15,7 +15,7 @@ export interface FileResult {
   source?: string[]
   /** Why the file is shown as a plain diff. */
   skipped?: string
-  /** Blocks of test code: labeled as tests, not judged, not folded. */
+  /** Blocks of test code: labeled as tests, not judged. */
   testBlocks?: string[]
   /** Jev judgments by block id. */
   judgments?: Record<string, Judgment>
