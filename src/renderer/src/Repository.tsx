@@ -14,9 +14,8 @@ import { List, ListItem } from '@astryxdesign/core/List'
 import { Tab, TabList } from '@astryxdesign/core/TabList'
 import { Text } from '@astryxdesign/core/Text'
 import { Timestamp } from '@astryxdesign/core/Timestamp'
-import { Token } from '@astryxdesign/core/Token'
 import { VStack } from '@astryxdesign/core/VStack'
-import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, RotateCw, ScanEye, ScrollText } from 'lucide-react'
+import { Check, Eye, FileDiff, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, RotateCw, ScanEye, ScrollText } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { PullRequestState, PullRequestSummary } from '../../core/sources/gh'
 import type { Conventions, PullRequestList } from '../../shared/api'
@@ -37,15 +36,34 @@ const STATES: [PullRequestState, string][] = [
 ]
 const EMPTY: Record<PullRequestState, string> = { open: '没有打开的 PR', merged: '没有已合并的 PR', closed: '没有已关闭的 PR', all: '还没有 PR' }
 
-type TokenColor = 'default' | 'gray' | 'yellow' | 'green' | 'red' | 'purple'
+/**
+ * Where an open PR stands in review, for its meta line: a small tinted icon and muted text, the way GitHub lists
+ * show it, rather than a colored pill. Merged and closed PRs show none; their review no longer matters.
+ */
+function reviewSignals(pr: PullRequestSummary, login: string) {
+  if (pr.state !== 'OPEN') return []
+  const signals: { key: string; icon: typeof Eye; label: string }[] = []
+  if (pr.requestedReviewers.includes(login)) signals.push({ key: 'requested', icon: Eye, label: '请你审阅' })
+  if (pr.reviewDecision === 'APPROVED') signals.push({ key: 'approved', icon: Check, label: '已批准' })
+  if (pr.reviewDecision === 'CHANGES_REQUESTED') signals.push({ key: 'changes', icon: FileDiff, label: '需修改' })
+  return signals
+}
 
-/** What a PR means for the viewer; its lifecycle (open, draft, merged, closed) is the status icon's job. */
-function tags(pr: PullRequestSummary, login: string): [string, TokenColor][] {
-  const list: [string, TokenColor][] = []
-  if (pr.requestedReviewers.includes(login)) list.push(['请你审阅', 'yellow'])
-  if (pr.reviewDecision === 'APPROVED') list.push(['已批准', 'green'])
-  if (pr.reviewDecision === 'CHANGES_REQUESTED') list.push(['需修改', 'red'])
-  return list
+function MetaLine({ pr, login }: { pr: PullRequestSummary; login: string }) {
+  return (
+    <HStack gap={1} align="center" wrap="wrap">
+      <Avatar size="xsm" name={pr.author} src={avatarUrl(pr.author)} tooltip={false} />
+      <Text type="supporting">
+        #{pr.number} · {pr.author} · 更新于 <Timestamp value={pr.updatedAt} format="relative" />
+      </Text>
+      {reviewSignals(pr, login).map(({ key, icon, label }) => (
+        <Text key={key} type="supporting" className={`review-signal is-${key}`}>
+          · <Icon icon={icon} size="xsm" color="inherit" />
+          {label}
+        </Text>
+      ))}
+    </HStack>
+  )
 }
 
 const STATUS = {
@@ -216,14 +234,7 @@ export function Repository({ repo }: { repo: string }) {
                       className="pr-item"
                       data-number={pr.number}
                       label={pr.title}
-                      description={
-                        <HStack gap={1} align="center">
-                          <Avatar size="xsm" name={pr.author} src={avatarUrl(pr.author)} tooltip={false} />
-                          <Text type="supporting">
-                            #{pr.number} · {pr.author} · 更新于 <Timestamp value={pr.updatedAt} format="relative" />
-                          </Text>
-                        </HStack>
-                      }
+                      description={<MetaLine pr={pr} login={login} />}
                       startContent={<StatusIcon pr={pr} />}
                       endContent={
                         <HStack gap={3} align="center">
@@ -232,9 +243,6 @@ export function Repository({ repo }: { repo: string }) {
                               <Icon icon={ScanEye} size="xsm" color="inherit" /> 核心 {lastReview.core} 行
                             </Text>
                           )}
-                          {tags(pr, login).map(([label, color]) => (
-                            <Token key={label} size="sm" color={color} label={label} />
-                          ))}
                           <DiffStat additions={pr.additions} deletions={pr.deletions} />
                         </HStack>
                       }
