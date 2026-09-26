@@ -22,6 +22,18 @@ export interface FileDiff {
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/
 
+/** Keep complete hunks touching a new-side range, including their removed lines. */
+export function diffForRange(diff: FileDiff, start: number, end: number): string {
+  const prefix = { add: '+', del: '-', ctx: ' ' }
+  return diff.hunks.filter((hunk) => {
+    const newLines = hunk.lines.filter((line) => line.newNo !== null)
+    const first = newLines[0]?.newNo ?? Number(HUNK_HEADER.exec(hunk.header)![2])
+    // A deletion-only hunk sits between `first` and `first + 1` in the new file.
+    const last = newLines.at(-1)?.newNo ?? first + 1
+    return first <= end && last >= start
+  }).map((hunk) => [hunk.header, ...hunk.lines.map((line) => prefix[line.kind] + line.text)].join('\n')).join('\n')
+}
+
 /** Git quotes paths with C escapes; octal escapes encode UTF-8 bytes. */
 function decodePath(path: string): string {
   if (!path.startsWith('"')) return path

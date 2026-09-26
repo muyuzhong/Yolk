@@ -46,7 +46,7 @@ test('custom role criteria are what Jev is asked with', () => {
   const { questions } = buildRequest({
     pr: { title: 't', body: '' },
     policy: null,
-    path: 'a.ts',
+    diff: { path: 'a.ts', oldPath: 'a.ts', status: 'added', binary: false, hunks: [] },
     source: ['const a = 1'],
     unit: { id: 'U1', start: 1, end: 1 } as never,
     blocks: [{ id: 'B1', unit: 'U1', lines: [1] } as never],

@@ -8,7 +8,9 @@ import type { ThemedToken } from 'shiki'
 import type { FileResult } from '../../core/analyze'
 import { highlightHunks } from './highlight'
 import { LABEL, SHOWN } from './labels'
-import { buildRows, type BlockState, type Category, type LineRow } from './rows'
+import { buildRows, type BlockState, type Category, type FoldRow, type LineRow } from './rows'
+
+const FOLD_LABEL = { ...LABEL, deleted: '删除', context: '上下文', uncertain: '未确定' }
 
 export interface Hover {
   file: number
@@ -90,11 +92,11 @@ export const DiffFile = memo(function DiffFile({ index, file, states, counts, un
           {rows.map((row) => {
             if (row.kind === 'hunk') return <div key={row.key} className="hunk-header">{row.header}</div>
             if (row.kind === 'fold') {
-              const summary = (Object.entries(row.counts) as [Category, number][]).map(([c, n]) => `${LABEL[c]} ${n} 行`).join(' · ')
+              const summary = (Object.entries(row.counts) as [keyof FoldRow['counts'], number][]).map(([c, n]) => `${FOLD_LABEL[c]} ${n} 行`).join(' · ')
               return (
                 <button key={row.key} className="fold" onClick={() => setExpanded((s) => new Set(s).add(row.key))}>
                   <Icon icon={ChevronsUpDown} size="xsm" />
-                  已折叠 {summary}
+                  已折叠 {row.lines} 行{summary && ` · ${summary}`}
                 </button>
               )
             }

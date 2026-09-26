@@ -14,6 +14,8 @@ export interface Block {
   lines: number[]
   nodeType: string
   unit: string
+  /** New-side lines owned by this node and its enclosing syntax, including unchanged headers. */
+  context?: number[]
 }
 
 /** Blocks judged together in one Jev request: a changed function, or top-level changes in one hunk. */
@@ -118,9 +120,23 @@ export async function chunkFile(spec: LangSpec, source: string, hunks: HunkRange
     }
 
     const functions = functionRanges(spec, tags.matches(tree.rootNode), anonymous, lines)
+    // Reuse ownership rules for structural context; collect once, not once per block.
+    const needed = new Set<number>()
+    for (const { node } of byOwner.values()) for (let n: Node | null = node; n; n = n.parent) needed.add(n.id)
+    const contextByNode = new Map<number, number[]>()
+    for (let i = 0; i < lines.length; i++) {
+      const owner = ownerOf(i + 1)
+      if (!owner || !needed.has(owner.id)) continue
+      const context = contextByNode.get(owner.id) ?? []
+      context.push(i + 1)
+      contextByNode.set(owner.id, context)
+    }
     const units = new Map<string, Unit>()
     const blocks: Block[] = []
     for (const { node, lines: blockLines } of byOwner.values()) {
+      const context: number[] = []
+      for (let n: Node | null = node; n; n = n.parent) context.push(...(contextByNode.get(n.id) ?? []))
+      context.sort((a, b) => a - b)
       const start = node.startPosition.row + 1
       const end = lastRow(node) + 1
       const fn = functions
@@ -142,7 +158,7 @@ export async function chunkFile(spec: LangSpec, source: string, hunks: HunkRange
         unit.start = Math.min(unit.start, region[0])
         unit.end = Math.max(unit.end, region[region.length - 1])
         unit.blocks.push(id)
-        blocks.push({ id, lines: region, nodeType: node.type, unit: unit.id })
+        blocks.push({ id, lines: region, nodeType: node.type, unit: unit.id, context })
       }
     }
 

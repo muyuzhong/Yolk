@@ -98,6 +98,7 @@ test('python: with header stays with the with statement', async () => {
   ])
   assert.deepEqual(blockLines(c), [[1], [2], [3], [4], [5]])
   assert.equal(c.blocks[1].nodeType, 'with_statement')
+  assert.deepEqual(c.blocks[3].context, [1, 2, 4])
 })
 
 test('rust: match arms, tail expression, expression-based control flow', async () => {
@@ -117,6 +118,7 @@ test('rust: match arms, tail expression, expression-based control flow', async (
   assert.deepEqual(blockLines(c), [[1, 11], [2, 8], [3], [4, 7], [5], [6], [9], [10]])
   assert.deepEqual(units(c), [['function', 'load', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8']]])
   assert.deepEqual(c.unowned, [])
+  assert.deepEqual(c.blocks[4].context, [1, 2, 4, 5, 7, 8, 11])
 })
 
 test('rust: attributes and doc comments belong to the item below', async () => {
