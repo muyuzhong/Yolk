@@ -6,6 +6,8 @@ import { getConvention, searchPullRequests } from '../core/sources/gh'
 import type { ReviewProgress, ReviewStart, SettingsUpdate } from '../shared/api'
 import { loadSettings, saveSettings, settingsView } from './settings'
 
+const reviews = new Map<number, { reviewId: string; controller: AbortController }>()
+
 function createWindow() {
   const window = new BrowserWindow({
     width: 1440,
@@ -22,24 +24,44 @@ function createWindow() {
 }
 
 async function startReview(sender: WebContents, url: string, reviewId: string): Promise<ReviewStart> {
-  const { pr, files } = await chunkPullRequest(url)
-  const policy = await getConvention(pr)
-  judgeInBackground(sender, reviewId, { pr, files, policy })
-  return { pr, files, policy }
+  const senderId = sender.id
+  reviews.get(senderId)?.controller.abort()
+  const controller = new AbortController()
+  const { signal } = controller
+  reviews.set(senderId, { reviewId, controller })
+  const cancel = () => controller.abort()
+  sender.once('destroyed', cancel)
+  const finish = () => {
+    sender.removeListener('destroyed', cancel)
+    if (reviews.get(senderId)?.controller === controller) reviews.delete(senderId)
+  }
+  try {
+    const { pr, files } = await chunkPullRequest(url)
+    signal.throwIfAborted()
+    const policy = await getConvention(pr)
+    signal.throwIfAborted()
+    void judgeInBackground(sender, reviewId, { pr, files, policy }, signal).finally(finish)
+    return { pr, files, policy }
+  } catch (error) {
+    finish()
+    throw error
+  }
 }
 
 /** Streams each unit's judgments to the renderer as its Jev request returns. */
-async function judgeInBackground(sender: WebContents, reviewId: string, { pr, files, policy }: ReviewStart) {
+async function judgeInBackground(sender: WebContents, reviewId: string, { pr, files, policy }: ReviewStart, signal: AbortSignal) {
   const send = (progress: ReviewProgress) => {
-    if (!sender.isDestroyed()) sender.send('review:progress', progress)
+    if (!signal.aborted && !sender.isDestroyed()) sender.send('review:progress', progress)
   }
   try {
     const { jev } = await loadSettings()
+    signal.throwIfAborted()
     // Without a key in settings the SDK falls back to TYPESAFE_API_KEY.
     const client = new TypeSafeClient({ defaultModel: jev.model, ...(jev.apiKey ? { apiKey: jev.apiKey } : {}) })
     const { model, inputTokens } = await judgeFiles(pr, files, {
       policy,
       client,
+      signal,
       onUnit: (result) => send({ type: 'unit', reviewId, ...result }),
     })
     send({ type: 'done', reviewId, model, inputTokens })
@@ -59,6 +81,10 @@ app.whenReady().then(() => {
     return { reviewRequested, authored }
   })
   ipcMain.handle('review:start', (event, url: string, reviewId: string) => startReview(event.sender, url, reviewId))
+  ipcMain.on('review:cancel', (event, reviewId: string) => {
+    const review = reviews.get(event.sender.id)
+    if (review?.reviewId === reviewId) review.controller.abort()
+  })
   createWindow()
 })
 

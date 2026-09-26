@@ -6,6 +6,7 @@ const api: YolkApi = {
   saveSettings: (update) => ipcRenderer.invoke('settings:save', update),
   listPullRequests: () => ipcRenderer.invoke('prs:list'),
   startReview: (url, reviewId) => ipcRenderer.invoke('review:start', url, reviewId),
+  cancelReview: (reviewId) => ipcRenderer.send('review:cancel', reviewId),
   onReviewProgress: (listener) => {
     const handler = (_event: IpcRendererEvent, progress: ReviewProgress) => listener(progress)
     ipcRenderer.on('review:progress', handler)

@@ -59,24 +59,28 @@ export interface UnitResult {
 export interface JudgeOptions {
   policy: string | null
   client: TypeSafeClient
+  signal?: AbortSignal
   onUnit?: (result: UnitResult) => void
 }
 
 /** Asks Jev about every judgment unit, at most 8 requests at a time; results are also merged into `files`. */
-export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy, client, onUnit }: JudgeOptions) {
+export async function judgeFiles(pr: PullRequest, files: FileResult[], { policy, client, onUnit, signal }: JudgeOptions) {
   let model = ''
   let inputTokens = 0
   const tasks = files.flatMap((file, fileIndex) => file.chunks?.units.map((unit) => ({ file, fileIndex, unit })) ?? [])
   await mapLimit(tasks, 8, async ({ file, fileIndex, unit }) => {
+    if (signal?.aborted) return
     const blocks = file.chunks!.blocks.filter((b) => b.unit === unit.id && !file.testBlocks!.includes(b.id))
     if (!blocks.length) return
     try {
-      const result = await judgeUnit(client, { pr, policy, path: file.diff.path, source: file.source!, unit, blocks })
+      const result = await judgeUnit(client, { pr, policy, path: file.diff.path, source: file.source!, unit, blocks }, signal)
+      if (signal?.aborted) return
       file.judgments = { ...file.judgments, ...result.judgments }
       model = result.model
       inputTokens += result.inputTokens
       onUnit?.({ fileIndex, unitId: unit.id, judgments: result.judgments })
     } catch (error) {
+      if (signal?.aborted) return
       const message = error instanceof Error ? error.message : String(error)
       file.unitErrors = { ...file.unitErrors, [unit.id]: message }
       onUnit?.({ fileIndex, unitId: unit.id, error: message })

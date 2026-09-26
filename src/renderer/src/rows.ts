@@ -40,14 +40,14 @@ export interface BlockState {
   unit: string
 }
 
-export function blockStates(file: FileResult, judgments: Record<string, Judgment>, unitErrors: Record<string, string>) {
+export function blockStates(file: FileResult, judgments: Record<string, Judgment>, unitErrors: Record<string, string>, error?: string) {
   const states = new Map<string, BlockState>()
   for (const block of file.chunks?.blocks ?? []) {
     const j = judgments[block.id]
     let category: Category = 'pending'
     if (file.testBlocks?.includes(block.id)) category = 'test'
     else if (j) category = j.role
-    else if (unitErrors[block.unit]) category = 'failed'
+    else if (unitErrors[block.unit] || error) category = 'failed'
     states.set(block.id, { category, unsure: j ? isUnsure(j) : false, cut: j ? suggestsRemoval(j) : false, unit: block.unit })
   }
   return states

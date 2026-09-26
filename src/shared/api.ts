@@ -36,5 +36,6 @@ export interface YolkApi {
   listPullRequests(): Promise<PullRequestLists>
   /** Chunks the PR and returns it; judgments then arrive through `onReviewProgress` tagged with `reviewId`. */
   startReview(url: string, reviewId: string): Promise<ReviewStart>
+  cancelReview(reviewId: string): void
   onReviewProgress(listener: (progress: ReviewProgress) => void): () => void
 }

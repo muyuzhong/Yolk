@@ -32,12 +32,16 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
       else setStatus({ state: 'error', message: progress.message })
     })
     window.yolk.startReview(url, reviewId).then(setReview, (e) => setLoadError(errorMessage(e)))
-    return unsubscribe
+    return () => {
+      unsubscribe()
+      window.yolk.cancelReview(reviewId)
+    }
   }, [url])
 
+  const judgmentError = status.state === 'error' ? status.message : undefined
   const states = useMemo(
-    () => review?.files.map((file, i) => blockStates(file, judgments[i] ?? {}, unitErrors[i] ?? {})) ?? [],
-    [review, judgments, unitErrors],
+    () => review?.files.map((file, i) => blockStates(file, judgments[i] ?? {}, unitErrors[i] ?? {}, judgmentError)) ?? [],
+    [review, judgments, unitErrors, judgmentError],
   )
   // Units with at least one block that goes to Jev (test blocks do not).
   const totalUnits = useMemo(
@@ -158,7 +162,7 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
           file={hovered}
           state={states[hover.file].get(hover.block)}
           judgment={judgments[hover.file]?.[hover.block]}
-          error={unitErrors[hover.file]?.[states[hover.file].get(hover.block)?.unit ?? '']}
+          error={unitErrors[hover.file]?.[states[hover.file].get(hover.block)?.unit ?? ''] ?? judgmentError}
         />
       )}
     </div>

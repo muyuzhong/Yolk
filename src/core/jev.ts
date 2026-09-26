@@ -54,8 +54,8 @@ export function buildRequest({ pr, policy, path, source, unit, blocks }: UnitInp
   return { state, questions }
 }
 
-export async function judgeUnit(client: TypeSafeClient, input: UnitInput) {
-  const result = await client.systemOne(buildRequest(input))
+export async function judgeUnit(client: TypeSafeClient, input: UnitInput, signal?: AbortSignal) {
+  const result = await client.systemOne(buildRequest(input), { signal })
   const judgments: Record<string, Judgment> = {}
   for (const block of input.blocks) {
     const role = result.answers[`${block.id}_role`] as ChoiceResponse<typeof ROLE_CRITERIA>
