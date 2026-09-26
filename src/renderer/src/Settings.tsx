@@ -73,7 +73,7 @@ export function Settings({ onBack }: { onBack: () => void }) {
             <p className="hint">阈值调好后，建议固定成具体版本号（如 jev-1.13.0），避免别名升级后阈值失效。</p>
           </fieldset>
           <fieldset>
-            <legend>通用模型（悬停解释，M4 启用）</legend>
+            <legend>通用模型（悬停解释）</legend>
             <label>
               Base URL
               <input value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder="https://api.openai.com/v1" />
@@ -96,6 +96,10 @@ export function Settings({ onBack }: { onBack: () => void }) {
               模型
               <input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} placeholder="模型名" />
             </label>
+            <p className="hint">
+              任何 OpenAI 兼容接口都可以，包括内网或本机部署的模型；不需要 key 的服务随便填一个即可。留空的项会使用环境变量 OPENAI_BASE_URL、OPENAI_API_KEY、OPENAI_MODEL。
+              {view.llm.ready ? ' 当前已可用。' : ' 当前还不可用。'}
+            </p>
           </fieldset>
           <p className="hint">API Key 用系统钥匙串加密后保存在本机，不会发送给界面进程。</p>
           <div className="actions">

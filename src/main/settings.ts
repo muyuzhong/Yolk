@@ -1,6 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { LlmConfig } from '../core/llm'
 import type { SettingsUpdate, SettingsView } from '../shared/api'
 
 export interface Settings {
@@ -41,11 +42,32 @@ export async function loadSettings(): Promise<Settings> {
   }
 }
 
+// Like TYPESAFE_API_KEY for Jev, empty general-model fields fall back to the environment.
+const env = () => ({
+  baseURL: process.env.OPENAI_BASE_URL ?? '',
+  apiKey: process.env.OPENAI_API_KEY ?? '',
+  model: process.env.OPENAI_MODEL ?? '',
+})
+
+export async function llmConfig(): Promise<LlmConfig> {
+  const { llm } = await loadSettings()
+  const fallback = env()
+  const config = { baseURL: llm.baseURL || fallback.baseURL, apiKey: llm.apiKey || fallback.apiKey, model: llm.model || fallback.model }
+  if (!config.baseURL || !config.apiKey || !config.model) throw new Error('通用模型还没配置：请在设置页填写 Base URL、API Key 和模型名')
+  return config
+}
+
 export async function settingsView(): Promise<SettingsView> {
   const stored = await readStored()
+  const fallback = env()
   return {
     jev: { model: stored.jev.model, hasKey: Boolean(stored.jev.apiKey) },
-    llm: { baseURL: stored.llm.baseURL, model: stored.llm.model, hasKey: Boolean(stored.llm.apiKey) },
+    llm: {
+      baseURL: stored.llm.baseURL,
+      model: stored.llm.model,
+      hasKey: Boolean(stored.llm.apiKey),
+      ready: Boolean((stored.llm.baseURL || fallback.baseURL) && (stored.llm.apiKey || fallback.apiKey) && (stored.llm.model || fallback.model)),
+    },
   }
 }
 

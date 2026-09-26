@@ -464,3 +464,12 @@ pre {
   color: var(--error);
   font-weight: 600;
 }
+.explanation {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.explanation:not(:empty) {
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}

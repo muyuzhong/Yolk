@@ -7,6 +7,7 @@ PR 审阅透镜：把 PR 的新增代码按语法切块，用 Jev 判断每块�
 - Node.js 22+
 - [gh](https://cli.github.com/) 已登录（`gh auth status`）：PR 列表、diff 和文件内容都通过它读取，私有仓库也能用
 - TypeSafe 的 API key：在客户端的设置页填写，或者设置环境变量 `TYPESAFE_API_KEY`
+- 悬停解释用的通用模型（任何 OpenAI 兼容接口）：在设置页填写 Base URL、API Key 和模型名，或者设置环境变量 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL`
 
 ```bash
 npm install

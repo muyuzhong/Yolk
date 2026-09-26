@@ -47,7 +47,13 @@ const COMMANDS = {
     page = await app.firstWindow()
     page.on('pageerror', (e) => console.log('[renderer:pageerror]', e.message))
     page.on('console', (m) => m.type() === 'error' && console.log('[renderer:error]', m.text()))
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 920))
+    // The window sits on the real desktop; ignore the OS pointer so a cursor resting over it cannot
+    // hover rows (and trigger explanations) behind the driver's back. CDP-injected mouse events still arrive.
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      window.setSize(1440, 920)
+      window.setIgnoreMouseEvents(true)
+    })
     await page.waitForSelector('.home', { timeout: 20_000 })
     // The home page lists PRs through `gh search prs`; wait until that settles.
     await page.waitForFunction(() => !document.body.textContent.includes('正在通过 gh 读取'), null, { timeout: 30_000 })
@@ -117,6 +123,26 @@ const COMMANDS = {
     await line.hover()
     await p.waitForTimeout(200)
     console.log('tooltip:', (await p.textContent('.tooltip').catch(() => null)) ?? '(none)')
+  },
+
+  /** Hover the first line of a category and wait for the general model's explanation (up to 60 s). */
+  async explain(category) {
+    const p = await needReview()
+    await COMMANDS['hover-block'](category)
+    await p.waitForFunction(
+      () => {
+        const text = document.querySelector('.tooltip .explanation')?.textContent ?? ''
+        return text && !text.includes('正在生成解释')
+      },
+      null,
+      { timeout: 60_000 },
+    )
+    // Read block id and explanation together so a mismatch would show.
+    const [id, text] = await p.evaluate(() => [
+      document.querySelector('.tooltip .small')?.textContent,
+      document.querySelector('.tooltip .explanation')?.textContent,
+    ])
+    console.log(`explanation for ${id}: ${text}`)
   },
 
   async home() {

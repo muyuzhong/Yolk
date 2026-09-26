@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Judgment } from '../../core/judgment'
 import type { ReviewStart } from '../../shared/api'
 import { DiffFile, type Hover } from './DiffFile'
 import { errorMessage, LABEL, SHOWN } from './labels'
 import { blockStates, lineCounts } from './rows'
-import { Tooltip } from './Tooltip'
+import { Tooltip, type Explanation } from './Tooltip'
 
 type Status = { state: 'judging' } | { state: 'done'; model: string; inputTokens: number } | { state: 'error'; message: string }
 
@@ -18,9 +18,17 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
   const [coreOnly, setCoreOnly] = useState(false)
   const [showPolicy, setShowPolicy] = useState(false)
   const [hover, setHover] = useState<Hover>()
+  const [llmReady, setLlmReady] = useState(false)
+  const [explanations, setExplanations] = useState<Record<string, Explanation>>({})
+  const reviewIdRef = useRef('')
+
+  useEffect(() => {
+    window.yolk.getSettings().then((settings) => setLlmReady(settings.llm.ready))
+  }, [])
 
   useEffect(() => {
     const reviewId = crypto.randomUUID()
+    reviewIdRef.current = reviewId
     const unsubscribe = window.yolk.onReviewProgress((progress) => {
       if (progress.reviewId !== reviewId) return
       if (progress.type === 'unit') {
@@ -57,6 +65,20 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
   const onHover = useCallback((next: Hover | undefined) => {
     setHover((current) => (current?.file === next?.file && current?.block === next?.block ? current : next))
   }, [])
+
+  // Resting 400ms on a block asks the general model; the main process caches the answers.
+  const hoverKey = hover ? `${hover.file}:${hover.block}` : undefined
+  useEffect(() => {
+    if (!hover || !hoverKey || !llmReady) return
+    const timer = setTimeout(() => {
+      setExplanations((all) => (all[hoverKey] && all[hoverKey].state !== 'error' ? all : { ...all, [hoverKey]: { state: 'loading' } }))
+      window.yolk.explainBlock(reviewIdRef.current, hover.file, hover.block).then(
+        (text) => setExplanations((all) => ({ ...all, [hoverKey]: { state: 'done', text } })),
+        (e) => setExplanations((all) => ({ ...all, [hoverKey]: { state: 'error', text: errorMessage(e) } })),
+      )
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [hoverKey, llmReady])
 
   if (loadError) {
     return (
@@ -163,6 +185,8 @@ export function Review({ url, onBack }: { url: string; onBack: () => void }) {
           state={states[hover.file].get(hover.block)}
           judgment={judgments[hover.file]?.[hover.block]}
           error={unitErrors[hover.file]?.[states[hover.file].get(hover.block)?.unit ?? ''] ?? judgmentError}
+          llmReady={llmReady}
+          explanation={explanations[`${hover.file}:${hover.block}`]}
         />
       )}
     </div>

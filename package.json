@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@typesafe-ai/sdk": "^0.6.0",
-    "@vscode/tree-sitter-wasm": "^0.3.1"
+    "@vscode/tree-sitter-wasm": "^0.3.1",
+    "openai": "^7.23.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
