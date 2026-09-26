@@ -460,3 +460,17 @@ section.file {
   opacity: 1;
   translate: 0 0;
 }
+
+/* Settings: a section list on the side, and rows that summarise a value and open in place to edit it. */
+.settings-content {
+  max-width: 760px;
+}
+.settings-title {
+  padding-inline: var(--spacing-3);
+}
+.setting-section-header {
+  padding-block-end: var(--spacing-3);
+}
+.setting-row {
+  padding-block: var(--spacing-4);
+}

@@ -220,8 +220,9 @@ const COMMANDS = {
   async settings() {
     const p = need()
     await goto('#/settings')
-    await p.waitForFunction(() => document.querySelectorAll('.settings input').length > 0, null, { timeout: 20_000 })
-    console.log('settings:', await p.evaluate(() => [...document.querySelectorAll('.settings input')].map((i) => `${i.value || i.placeholder}`).join(' | ')))
+    // Each setting is a row summarising its value (name, then value); the model section shows first.
+    await p.waitForFunction(() => document.querySelectorAll('.setting-row').length > 0, null, { timeout: 20_000 })
+    console.log('settings:', await p.evaluate(() => [...document.querySelectorAll('.setting-row')].map((r) => r.innerText.replace(/\n编辑$/, '').replace(/\n/g, ': ')).join(' | ')))
   },
 
   /** Force the color scheme (light|dark|system); Astryx and the diff colors follow it. */

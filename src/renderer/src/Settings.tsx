@@ -1,259 +1,380 @@
 import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
-import { Card } from '@astryxdesign/core/Card'
+import { Divider } from '@astryxdesign/core/Divider'
 import { Heading } from '@astryxdesign/core/Heading'
 import { HStack } from '@astryxdesign/core/HStack'
-import { Layout, LayoutContent } from '@astryxdesign/core/Layout'
+import { Icon } from '@astryxdesign/core/Icon'
+import { Layout, LayoutContent, LayoutPanel, StackItem } from '@astryxdesign/core/Layout'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { StatusDot } from '@astryxdesign/core/StatusDot'
 import { Text } from '@astryxdesign/core/Text'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { TextInput } from '@astryxdesign/core/TextInput'
-import { Token } from '@astryxdesign/core/Token'
 import { useToast } from '@astryxdesign/core/Toast'
 import { VStack } from '@astryxdesign/core/VStack'
-import { KeyRound, Link2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import type { SettingsView } from '../../shared/api'
+import { Cpu, KeyRound, Link2, Plus, ScrollText } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import type { SettingsUpdate, SettingsView } from '../../shared/api'
 import { ListSkeleton } from './RepositoryList'
 import { errorMessage } from './labels'
 import { parseTarget } from './target'
 
+type Section = 'models' | 'conventions'
+const SECTIONS: { id: Section; label: string; description: string; icon: typeof Cpu }[] = [
+  { id: 'models', label: '模型', description: 'Jev 和生成解释的通用模型', icon: Cpu },
+  { id: 'conventions', label: '审阅约定', description: '告诉 Jev 哪些代码现阶段用不着', icon: ScrollText },
+]
+
 const EXAMPLE = '例如：\n项目处于 MVP 阶段。\n- 不需要重试、降级和熔断\n- 只在 API 边界校验输入'
 
-/** One convention with its own draft and save button, so editing it never touches the rest of the settings. */
-function ConventionEditor({
+/**
+ * One setting as a row: its name and a summary of the current value, with "编辑" on the right. Editing opens the row
+ * in place with its own save and cancel, so nothing else on the page is touched.
+ */
+function SettingRow({
   label,
-  description,
-  saved,
+  value,
+  isEditing,
+  onEdit,
+  onCancel,
   onSave,
-  onRemove,
-  hasAutoFocus,
+  canSave = true,
+  danger,
+  children,
 }: {
   label: string
-  description?: string
-  saved: string
-  onSave: (text: string) => Promise<void>
-  onRemove?: () => Promise<void>
-  hasAutoFocus?: boolean
+  value: ReactNode
+  isEditing: boolean
+  onEdit: () => void
+  onCancel: () => void
+  onSave: () => Promise<void>
+  canSave?: boolean
+  /** A destructive action (clear a key, delete a convention), kept inside the editing state and apart from save. */
+  danger?: { label: string; onClick: () => Promise<void> }
+  children: ReactNode
 }) {
-  const [draft, setDraft] = useState(saved)
-  const [isSaving, setIsSaving] = useState(false)
-  useEffect(() => setDraft(saved), [saved])
-  const run = async (action: () => Promise<void>) => {
-    setIsSaving(true)
+  const [busy, setBusy] = useState<'save' | 'danger'>()
+  const run = async (which: 'save' | 'danger', action: () => Promise<void>) => {
+    setBusy(which)
     try {
       await action()
     } finally {
-      setIsSaving(false)
+      setBusy(undefined)
     }
   }
   return (
-    <VStack gap={2}>
-      <TextArea label={label} description={description} value={draft} onChange={setDraft} rows={4} placeholder={EXAMPLE} hasAutoFocus={hasAutoFocus} />
-      <HStack gap={2}>
-        <Button size="sm" label="保存" isDisabled={draft.trim() === saved} isLoading={isSaving} onClick={() => run(() => onSave(draft))} />
-        {draft !== saved && <Button size="sm" variant="ghost" label="撤销修改" onClick={() => setDraft(saved)} />}
-        {onRemove && <Button size="sm" variant="ghost" label="删除" onClick={() => run(onRemove)} />}
+    <>
+      {isEditing ? (
+        <VStack gap={3} className="setting-row is-editing">
+          <Text weight="semibold">{label}</Text>
+          {children}
+          <HStack gap={2}>
+            <Button size="sm" variant="primary" label="保存" isDisabled={!canSave} isLoading={busy === 'save'} onClick={() => run('save', onSave)} />
+            <Button size="sm" variant="ghost" label="取消" onClick={onCancel} />
+            {danger && (
+              <>
+                <StackItem size="fill" />
+                <Button size="sm" variant="destructive" label={danger.label} isLoading={busy === 'danger'} onClick={() => run('danger', danger.onClick)} />
+              </>
+            )}
+          </HStack>
+        </VStack>
+      ) : (
+        <HStack gap={4} align="start" className="setting-row">
+          <VStack gap={0.5} className="page-heading">
+            <Text weight="semibold">{label}</Text>
+            <Text type="supporting" maxLines={2}>
+              {value}
+            </Text>
+          </VStack>
+          <Button size="sm" variant="ghost" label="编辑" onClick={onEdit} />
+        </HStack>
+      )}
+      <Divider />
+    </>
+  )
+}
+
+function SectionHeader({ title, description, status }: { title: string; description: string; status?: ReactNode }) {
+  return (
+    <VStack gap={1} className="setting-section-header">
+      <HStack gap={2} align="center">
+        <Heading level={3}>{title}</Heading>
+        {status}
       </HStack>
+      <Text type="supporting">{description}</Text>
     </VStack>
   )
 }
+
+/** The first line of a convention, for its row's summary. */
+const firstLine = (text: string) => text.split('\n').find((line) => line.trim()) ?? ''
 
 export function Settings({ repo: focusRepo }: { repo?: string }) {
   const showToast = useToast()
   const [view, setView] = useState<SettingsView>()
   const [loadError, setLoadError] = useState<string>()
-  const [jevModel, setJevModel] = useState('')
-  const [jevKey, setJevKey] = useState('')
-  const [baseURL, setBaseURL] = useState('')
-  const [llmModel, setLlmModel] = useState('')
-  const [llmKey, setLlmKey] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
+  const [section, setSection] = useState<Section>(focusRepo ? 'conventions' : 'models')
+  // Key of the row being edited: one at a time, like a list you edit in place.
+  const [editing, setEditing] = useState<string | undefined>(focusRepo ? `repo:${focusRepo}` : undefined)
+  const [draft, setDraft] = useState('')
   const [newRepo, setNewRepo] = useState('')
-  // A repository being added (or opened from a review) that has no saved convention yet.
-  const [draftRepo, setDraftRepo] = useState(focusRepo)
-  useEffect(() => setDraftRepo(focusRepo), [focusRepo])
-
-  const load = (settings: SettingsView) => {
-    setView(settings)
-    setJevModel(settings.jev.model)
-    setBaseURL(settings.llm.baseURL)
-    setLlmModel(settings.llm.model)
-    setJevKey('')
-    setLlmKey('')
-  }
+  // A repository opened for its convention (from a review, or just added) that has none saved yet.
+  const [pendingRepo, setPendingRepo] = useState(focusRepo)
 
   useEffect(() => {
-    window.yolk.getSettings().then(load, (error) => setLoadError(errorMessage(error)))
-  }, [])
-
-  const save = async (clear?: 'jev' | 'llm') => {
-    setIsSaving(true)
-    try {
-      load(
-        await window.yolk.saveSettings({
-          jev: { model: jevModel.trim(), apiKey: clear === 'jev' ? '' : jevKey || undefined },
-          llm: { baseURL: baseURL.trim(), model: llmModel.trim(), apiKey: clear === 'llm' ? '' : llmKey || undefined },
-        }),
-      )
-      showToast({ body: clear ? '已清除保存的 API Key' : '设置已保存' })
-    } catch (error) {
-      showToast({ type: 'error', body: `保存失败：${errorMessage(error)}` })
-    } finally {
-      setIsSaving(false)
+    window.yolk.getSettings().then(
+      (settings) => {
+        setView(settings)
+        if (focusRepo) setDraft(settings.conventions.repos[focusRepo] ?? '')
+      },
+      (error) => setLoadError(errorMessage(error)),
+    )
+  }, [focusRepo])
+  useEffect(() => {
+    setPendingRepo(focusRepo)
+    if (focusRepo) {
+      setSection('conventions')
+      setEditing(`repo:${focusRepo}`)
     }
-  }
+  }, [focusRepo])
 
-  const saveConvention = async (repo: string | null, text: string, done: string) => {
+  const edit = (key: string, initial: string) => {
+    setEditing(key)
+    setDraft(initial)
+  }
+  const cancel = () => {
+    setEditing(undefined)
+    setDraft('')
+  }
+  const guard = async (action: () => Promise<SettingsView>, done: string) => {
     try {
-      const next = await window.yolk.saveConvention(repo, text)
-      setView(next)
-      if (repo === draftRepo && next.conventions.repos[repo ?? '']) setDraftRepo(undefined)
+      setView(await action())
+      cancel()
       showToast({ body: done })
     } catch (error) {
       showToast({ type: 'error', body: `保存失败：${errorMessage(error)}` })
     }
   }
+  /** Saves one model field; everything else keeps its stored value (an undefined key means "unchanged"). */
+  const saveModels = (change: (update: SettingsUpdate) => SettingsUpdate, done: string) =>
+    guard(() => window.yolk.saveSettings(change({ jev: { model: view!.jev.model }, llm: { baseURL: view!.llm.baseURL, model: view!.llm.model } })), done)
+  const saveConvention = (repo: string | null, text: string, done: string) =>
+    guard(async () => {
+      const next = await window.yolk.saveConvention(repo, text)
+      if (repo === pendingRepo) setPendingRepo(undefined)
+      return next
+    }, done)
   const addRepo = () => {
     const target = parseTarget(newRepo)
     if (!target) return
-    setDraftRepo(target.repo)
+    setPendingRepo(target.repo)
+    edit(`repo:${target.repo}`, view?.conventions.repos[target.repo] ?? '')
     setNewRepo('')
   }
-  const repoConventions = view ? Object.keys(view.conventions.repos).sort() : []
-  const editedRepos = draftRepo && !repoConventions.includes(draftRepo) ? [draftRepo, ...repoConventions] : repoConventions
+
+  const current = SECTIONS.find((s) => s.id === section)!
+  const repos = view ? Object.keys(view.conventions.repos).sort() : []
+  const shownRepos = pendingRepo && !repos.includes(pendingRepo) ? [pendingRepo, ...repos] : repos
 
   return (
-    <Layout padding={6} contentWidth={720}>
-      <LayoutContent>
-        <VStack gap={6} className="settings">
-          <VStack gap={1}>
-            <Heading level={1}>设置</Heading>
-            <Text type="supporting">API Key 用系统钥匙串加密后保存在本机，只在主进程里使用，不会传给界面。</Text>
+    <Layout
+      className="settings-page"
+      start={
+        <LayoutPanel width={240} hasDivider padding={3} label="设置分区">
+          <VStack gap={3}>
+            <Heading level={1} className="settings-title">
+              设置
+            </Heading>
+            <List density="spacious">
+              {SECTIONS.map((s) => (
+                <ListItem
+                  key={s.id}
+                  label={s.label}
+                  startContent={<Icon icon={s.icon} size="sm" />}
+                  isSelected={section === s.id}
+                  onClick={() => {
+                    setSection(s.id)
+                    cancel()
+                  }}
+                />
+              ))}
+            </List>
           </VStack>
-          {loadError && <Banner status="error" title="读取设置失败" description={loadError} />}
-          {!view && !loadError && <ListSkeleton rows={4} />}
-          {view && (
-            <>
-              <Card>
-                <VStack gap={4}>
-                  <HStack gap={2}>
-                    <Heading level={2}>Jev</Heading>
-                    <Text type="supporting">判断每个代码块是核心、防御还是支撑</Text>
-                    <span className="spacer" />
-                    <Token size="sm" color={view.jev.hasKey ? 'green' : 'gray'} label={view.jev.hasKey ? '已保存 Key' : '使用环境变量'} />
-                  </HStack>
-                  <TextInput
-                    type="password"
+        </LayoutPanel>
+      }
+      content={
+        <LayoutContent padding={6}>
+          <VStack gap={8} className="settings-content">
+            <VStack gap={1}>
+              <Heading level={2}>{current.label}</Heading>
+              <Text type="supporting">{current.description}</Text>
+            </VStack>
+            {loadError && <Banner status="error" title="读取设置失败" description={loadError} />}
+            {!view && !loadError && <ListSkeleton rows={4} />}
+
+            {view && section === 'models' && (
+              <>
+                <VStack gap={0}>
+                  <SectionHeader title="Jev" description="判断每个代码块是核心、防御还是支撑。" />
+                  <Divider />
+                  <SettingRow
                     label="API Key"
-                    startIcon={KeyRound}
-                    value={jevKey}
-                    onChange={setJevKey}
-                    placeholder={view.jev.hasKey ? '已保存，留空表示不修改' : '未保存，将使用环境变量 TYPESAFE_API_KEY'}
-                    autoComplete="off"
-                  />
-                  <TextInput
+                    value={view.jev.hasKey ? '已保存，用系统钥匙串加密' : '未保存，使用环境变量 TYPESAFE_API_KEY'}
+                    isEditing={editing === 'jev.key'}
+                    onEdit={() => edit('jev.key', '')}
+                    onCancel={cancel}
+                    canSave={draft.trim() !== ''}
+                    onSave={() => saveModels((u) => ({ ...u, jev: { ...u.jev, apiKey: draft.trim() } }), 'Jev API Key 已保存')}
+                    danger={
+                      view.jev.hasKey
+                        ? { label: '清除已保存的 Key', onClick: () => saveModels((u) => ({ ...u, jev: { ...u.jev, apiKey: '' } }), '已清除 Jev API Key') }
+                        : undefined
+                    }
+                  >
+                    <TextInput type="password" label="API Key" isLabelHidden startIcon={KeyRound} value={draft} onChange={setDraft} placeholder="粘贴新的 Key" autoComplete="off" hasAutoFocus />
+                  </SettingRow>
+                  <SettingRow
                     label="模型"
-                    value={jevModel}
-                    onChange={setJevModel}
-                    placeholder="jev-latest"
-                    description="阈值调好后，建议固定成具体版本号（如 jev-1.13.0），避免别名升级后阈值失效。"
-                  />
-                  {view.jev.hasKey && (
-                    <HStack gap={2}>
-                      <Button size="sm" variant="ghost" label="清除已保存的 Key" onClick={() => save('jev')} />
-                    </HStack>
-                  )}
+                    value={view.jev.model}
+                    isEditing={editing === 'jev.model'}
+                    onEdit={() => edit('jev.model', view.jev.model)}
+                    onCancel={cancel}
+                    canSave={draft.trim() !== '' && draft.trim() !== view.jev.model}
+                    onSave={() => saveModels((u) => ({ ...u, jev: { ...u.jev, model: draft.trim() } }), 'Jev 模型已保存')}
+                  >
+                    <TextInput
+                      label="模型"
+                      isLabelHidden
+                      value={draft}
+                      onChange={setDraft}
+                      placeholder="jev-latest"
+                      description="阈值调好后，建议固定成具体版本号（如 jev-1.13.0），避免别名升级后阈值失效。"
+                      hasAutoFocus
+                    />
+                  </SettingRow>
                 </VStack>
-              </Card>
-              <Card>
-                <VStack gap={4}>
-                  <HStack gap={2}>
-                    <Heading level={2}>通用模型</Heading>
-                    <Text type="supporting">生成悬停时的中文解释</Text>
-                    <span className="spacer" />
-                    <Token size="sm" color={view.llm.ready ? 'green' : 'yellow'} label={view.llm.ready ? '已可用' : '未配置'} />
-                  </HStack>
-                  <TextInput
+
+                <VStack gap={0}>
+                  <SectionHeader
+                    title="通用模型"
+                    description="生成悬停时的中文解释。任何 OpenAI 兼容接口都可以，留空的项使用环境变量 OPENAI_*。"
+                    status={<StatusDot variant={view.llm.ready ? 'success' : 'warning'} label={view.llm.ready ? '已可用' : '未配置'} tooltip={view.llm.ready ? '已可用' : '未配置'} />}
+                  />
+                  <Divider />
+                  <SettingRow
                     label="Base URL"
-                    startIcon={Link2}
-                    value={baseURL}
-                    onChange={setBaseURL}
-                    placeholder="https://api.openai.com/v1"
-                    description="任何 OpenAI 兼容接口都可以，包括内网或本机部署的模型。"
-                  />
-                  <TextInput
-                    type="password"
+                    value={view.llm.baseURL || '未设置，使用环境变量 OPENAI_BASE_URL'}
+                    isEditing={editing === 'llm.baseURL'}
+                    onEdit={() => edit('llm.baseURL', view.llm.baseURL)}
+                    onCancel={cancel}
+                    canSave={draft.trim() !== view.llm.baseURL}
+                    onSave={() => saveModels((u) => ({ ...u, llm: { ...u.llm, baseURL: draft.trim() } }), 'Base URL 已保存')}
+                  >
+                    <TextInput label="Base URL" isLabelHidden startIcon={Link2} value={draft} onChange={setDraft} placeholder="https://api.openai.com/v1" hasAutoFocus />
+                  </SettingRow>
+                  <SettingRow
                     label="API Key"
-                    startIcon={KeyRound}
-                    value={llmKey}
-                    onChange={setLlmKey}
-                    placeholder={view.llm.hasKey ? '已保存，留空表示不修改' : '未保存；不需要 key 的服务随便填一个即可'}
-                    autoComplete="off"
-                  />
-                  <TextInput label="模型" value={llmModel} onChange={setLlmModel} placeholder="模型名，例如 gpt-4.1-mini" />
-                  <Text type="supporting">留空的项会使用环境变量 OPENAI_BASE_URL、OPENAI_API_KEY、OPENAI_MODEL。</Text>
-                  {view.llm.hasKey && (
-                    <HStack gap={2}>
-                      <Button size="sm" variant="ghost" label="清除已保存的 Key" onClick={() => save('llm')} />
-                    </HStack>
-                  )}
+                    value={view.llm.hasKey ? '已保存，用系统钥匙串加密' : '未保存，使用环境变量 OPENAI_API_KEY'}
+                    isEditing={editing === 'llm.key'}
+                    onEdit={() => edit('llm.key', '')}
+                    onCancel={cancel}
+                    canSave={draft.trim() !== ''}
+                    onSave={() => saveModels((u) => ({ ...u, llm: { ...u.llm, apiKey: draft.trim() } }), 'API Key 已保存')}
+                    danger={
+                      view.llm.hasKey
+                        ? { label: '清除已保存的 Key', onClick: () => saveModels((u) => ({ ...u, llm: { ...u.llm, apiKey: '' } }), '已清除 API Key') }
+                        : undefined
+                    }
+                  >
+                    <TextInput
+                      type="password"
+                      label="API Key"
+                      isLabelHidden
+                      startIcon={KeyRound}
+                      value={draft}
+                      onChange={setDraft}
+                      placeholder="粘贴新的 Key；不需要 key 的服务随便填一个"
+                      autoComplete="off"
+                      hasAutoFocus
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    label="模型"
+                    value={view.llm.model || '未设置，使用环境变量 OPENAI_MODEL'}
+                    isEditing={editing === 'llm.model'}
+                    onEdit={() => edit('llm.model', view.llm.model)}
+                    onCancel={cancel}
+                    canSave={draft.trim() !== view.llm.model}
+                    onSave={() => saveModels((u) => ({ ...u, llm: { ...u.llm, model: draft.trim() } }), '模型已保存')}
+                  >
+                    <TextInput label="模型" isLabelHidden value={draft} onChange={setDraft} placeholder="模型名，例如 gpt-4.1-mini" hasAutoFocus />
+                  </SettingRow>
                 </VStack>
-              </Card>
-              <HStack gap={2}>
-                <Button variant="primary" label="保存设置" isLoading={isSaving} onClick={() => save()} />
-              </HStack>
-              <Card>
-                <VStack gap={5}>
-                  <VStack gap={1}>
-                    <Heading level={2}>审阅约定</Heading>
-                    <Text type="supporting">
-                      写下项目现阶段不需要哪些代码，Jev 会据此标出建议删除（✂）的块。约定只保存在本机；改动在下次打开 PR 时生效。
-                    </Text>
-                  </VStack>
-                  <ConventionEditor
-                    label="默认约定"
-                    description="没有单独约定的仓库都用这一份。"
-                    saved={view.conventions.default}
-                    onSave={(text) => saveConvention(null, text, '默认约定已保存')}
-                  />
-                  <VStack gap={3}>
-                    <VStack gap={1}>
-                      <Text weight="medium">仓库约定</Text>
-                      <Text type="supporting">单独给某个仓库写的约定，会替代默认约定。</Text>
-                    </VStack>
-                    {editedRepos.map((repo) => (
-                      <ConventionEditor
+              </>
+            )}
+
+            {view && section === 'conventions' && (
+              <>
+                <VStack gap={0}>
+                  <SectionHeader title="默认约定" description="没有单独约定的仓库都用这一份。改动在下次打开 PR 时生效。" />
+                  <Divider />
+                  <SettingRow
+                    label="所有仓库"
+                    value={view.conventions.default ? firstLine(view.conventions.default) : '未设置：不标建议删除（✂）'}
+                    isEditing={editing === 'default'}
+                    onEdit={() => edit('default', view.conventions.default)}
+                    onCancel={cancel}
+                    canSave={draft.trim() !== view.conventions.default}
+                    onSave={() => saveConvention(null, draft, '默认约定已保存')}
+                  >
+                    <TextArea label="默认约定" isLabelHidden value={draft} onChange={setDraft} rows={6} placeholder={EXAMPLE} hasAutoFocus />
+                  </SettingRow>
+                </VStack>
+
+                <VStack gap={0}>
+                  <SectionHeader title="仓库约定" description="单独给某个仓库写的约定，会替代默认约定。" />
+                  <Divider />
+                  {shownRepos.map((repo) => {
+                    const saved = view.conventions.repos[repo] ?? ''
+                    return (
+                      <SettingRow
                         key={repo}
                         label={repo}
-                        saved={view.conventions.repos[repo] ?? ''}
-                        hasAutoFocus={repo === focusRepo}
-                        onSave={(text) => saveConvention(repo, text, `${repo} 的约定已保存`)}
-                        onRemove={
-                          view.conventions.repos[repo]
-                            ? () => saveConvention(repo, '', `已删除 ${repo} 的约定`)
-                            : async () => setDraftRepo(undefined)
-                        }
-                      />
-                    ))}
-                    <HStack gap={2} align="end">
-                      <TextInput
-                        label="添加仓库"
-                        isLabelHidden
-                        width={320}
-                        value={newRepo}
-                        onChange={setNewRepo}
-                        onEnter={addRepo}
-                        placeholder="owner/repo 或仓库链接"
-                      />
-                      <Button label="添加仓库约定" isDisabled={!parseTarget(newRepo)} onClick={addRepo} />
-                    </HStack>
-                  </VStack>
+                        value={saved ? firstLine(saved) : '还没有写'}
+                        isEditing={editing === `repo:${repo}`}
+                        onEdit={() => edit(`repo:${repo}`, saved)}
+                        onCancel={() => {
+                          cancel()
+                          if (!saved) setPendingRepo(undefined)
+                        }}
+                        canSave={draft.trim() !== '' && draft.trim() !== saved}
+                        onSave={() => saveConvention(repo, draft, `${repo} 的约定已保存`)}
+                        danger={saved ? { label: '删除这份约定', onClick: () => saveConvention(repo, '', `已删除 ${repo} 的约定`) } : undefined}
+                      >
+                        <TextArea label={`${repo} 的约定`} isLabelHidden value={draft} onChange={setDraft} rows={6} placeholder={EXAMPLE} hasAutoFocus />
+                      </SettingRow>
+                    )
+                  })}
+                  <HStack gap={2} align="center" className="setting-row">
+                    <TextInput
+                      label="添加仓库"
+                      isLabelHidden
+                      width={320}
+                      startIcon={Plus}
+                      value={newRepo}
+                      onChange={setNewRepo}
+                      onEnter={addRepo}
+                      placeholder="owner/repo 或仓库链接"
+                    />
+                    <Button size="sm" label="添加仓库约定" isDisabled={!parseTarget(newRepo)} onClick={addRepo} />
+                  </HStack>
                 </VStack>
-              </Card>
-            </>
-          )}
-        </VStack>
-      </LayoutContent>
-    </Layout>
+              </>
+            )}
+          </VStack>
+        </LayoutContent>
+      }
+    />
   )
 }
