@@ -287,14 +287,32 @@ section.file {
 .selection-action {
   position: fixed;
   z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-0-5) var(--spacing-2) var(--spacing-0-5) var(--spacing-0-5);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-container);
+  background: var(--color-background-popover);
   box-shadow: var(--shadow-med);
-  border-radius: var(--radius-element);
+  color: var(--color-text-primary);
+}
+.selection-action .astryx-icon,
+.selection-action svg {
+  color: var(--color-data-categorical-indigo);
 }
 .selection-action .muted {
-  display: block;
-  padding: var(--spacing-2) var(--spacing-3);
-  border-radius: var(--radius-element);
-  background: var(--color-background-popover);
+  padding: var(--spacing-1) var(--spacing-2);
+}
+/*
+ * Selected lines: the whole row takes a light indigo wash (the category bar stays), instead of the browser's ragged
+ * text highlight, which is hidden in the diff.
+ */
+.diff ::selection {
+  background: transparent;
+}
+.diff .line[data-selected] {
+  background: color-mix(in srgb, var(--color-data-categorical-indigo) 16%, transparent);
 }
 .selection-card {
   position: fixed;

@@ -18,7 +18,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_THRESHOLDS, type Judgment } from '../../core/judgment'
 import type { ReviewStart } from '../../shared/api'
 import { DiffFile, type Hover } from './DiffFile'
-import { readSelection, SelectionExplain, type DiffSelection } from './SelectionExplain'
+import { markLines, readSelection, SelectionExplain, type DiffSelection } from './SelectionExplain'
 import { errorMessage, LABEL, SHOWN } from './labels'
 import { openSettings, useSettingsDialog } from './settingsDialog'
 import { navigate, pullRequestUrl } from './route'
@@ -170,6 +170,25 @@ export function Review({ repo, number }: { repo: string; number: number }) {
       else setSelection((current) => (current && explanations[current.key] ? current : undefined))
     })
   }, [explanations])
+
+  // Whole selected lines are highlighted live while dragging, and stay highlighted while their action or answer is up.
+  const selectionRef = useRef(selection)
+  selectionRef.current = selection
+  useEffect(() => markLines(selection?.elements ?? []), [selection])
+  useEffect(() => {
+    let frame = 0
+    const onChange = () =>
+      (frame ||= requestAnimationFrame(() => {
+        frame = 0
+        markLines(readSelection()?.elements ?? selectionRef.current?.elements ?? [])
+      }))
+    document.addEventListener('selectionchange', onChange)
+    return () => {
+      document.removeEventListener('selectionchange', onChange)
+      cancelAnimationFrame(frame)
+      markLines([])
+    }
+  }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

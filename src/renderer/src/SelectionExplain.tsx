@@ -15,6 +15,8 @@ export interface DiffSelection {
   y: number
   /** Identifies the selection for caching its explanation. */
   key: string
+  /** The selected line elements, highlighted while the selection or its answer is up. */
+  elements: HTMLElement[]
 }
 
 const WIDTH = 420
@@ -30,9 +32,8 @@ export function readSelection(): DiffSelection | null {
   const start = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement
   const section = start?.closest<HTMLElement>('section.file')
   if (!section) return null
-  const lines = [...section.querySelectorAll<HTMLElement>('.line')]
-    .filter((el) => range.intersectsNode(el))
-    .map(
+  const elements = [...section.querySelectorAll<HTMLElement>('.line')].filter((el) => range.intersectsNode(el))
+  const lines = elements.map(
       (el): SelectionLine => ({
         kind: el.dataset.kind as SelectionLine['kind'],
         oldNo: el.dataset.old ? Number(el.dataset.old) : null,
@@ -43,7 +44,19 @@ export function readSelection(): DiffSelection | null {
   const rects = range.getClientRects()
   const end = rects[rects.length - 1] ?? range.getBoundingClientRect()
   const fileIndex = Number(section.dataset.index)
-  return { fileIndex, lines, x: end.right, y: end.bottom, key: `sel:${fileIndex}:${JSON.stringify(lines)}` }
+  return { fileIndex, lines, x: end.right, y: end.bottom, key: `sel:${fileIndex}:${JSON.stringify(lines)}`, elements }
+}
+
+let marked: HTMLElement[] = []
+
+/**
+ * Highlights whole selected lines in place of the browser's ragged text highlight. It sets a data attribute React does
+ * not manage, so it survives the lines re-rendering for hover.
+ */
+export function markLines(elements: HTMLElement[]) {
+  for (const el of marked) if (!elements.includes(el)) delete el.dataset.selected
+  for (const el of elements) el.dataset.selected = ''
+  marked = elements
 }
 
 /** "第 12–18 行" from the new-version numbers of a selection, or the old ones when only removed lines are selected. */
@@ -78,9 +91,12 @@ export function SelectionExplain({
   const count = selection.lines.length
   if (!explanation) {
     return (
-      <div className="selection-action" style={{ left: Math.min(selection.x, window.innerWidth - 240), top: selection.y + 8 }}>
+      <div className="selection-action" style={{ left: Math.min(selection.x, window.innerWidth - 260), top: selection.y + 8 }}>
         {llmReady ? (
-          <Button size="sm" variant="primary" icon={<Icon icon={Sparkles} size="sm" />} label={`解释所选的 ${count} 行`} onClick={onExplain} endContent={<Kbd keys="e" />} />
+          <>
+            <Button size="sm" variant="ghost" icon={<Icon icon={Sparkles} size="sm" color="inherit" />} label={`解释所选的 ${count} 行`} onClick={onExplain} />
+            <Kbd keys="e" />
+          </>
         ) : (
           <span className="muted">在设置里配置通用模型后，可以解释选中的代码</span>
         )}
