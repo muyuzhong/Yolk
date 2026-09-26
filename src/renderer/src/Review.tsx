@@ -14,7 +14,7 @@ import { Switch } from '@astryxdesign/core/Switch'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { CircleAlert, CircleCheck, FileWarning, ScrollText } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_THRESHOLDS, type Judgment } from '../../core/judgment'
 import type { ReviewStart } from '../../shared/api'
 import { DiffFile, type Hover } from './DiffFile'
@@ -84,11 +84,22 @@ export function Review({ repo, number }: { repo: string; number: number }) {
   }, [url, attempt])
 
   const judgmentError = status.state === 'error' ? status.message : undefined
-  const states = useMemo(
-    () => review?.files.map((file, i) => blockStates(file, judgments[i] ?? {}, unitErrors[i] ?? {}, judgmentError, thresholds)) ?? [],
+  // Per file, recompute only when that file's inputs change: judgments arrive one unit at a time, and handing every
+  // file a fresh Map would re-render every diff line of the PR on each one.
+  const stateCache = useRef<{ inputs: unknown[]; states: ReturnType<typeof blockStates>; counts: ReturnType<typeof lineCounts> }[]>([])
+  const perFile = useMemo(
+    () =>
+      review?.files.map((file, i) => {
+        const inputs = [file, judgments[i], unitErrors[i], judgmentError, thresholds]
+        const cached = stateCache.current[i]
+        if (cached && cached.inputs.every((input, k) => input === inputs[k])) return cached
+        const states = blockStates(file, judgments[i] ?? {}, unitErrors[i] ?? {}, judgmentError, thresholds)
+        return (stateCache.current[i] = { inputs, states, counts: lineCounts(file, states) })
+      }) ?? [],
     [review, judgments, unitErrors, judgmentError, thresholds],
   )
-  const counts = useMemo(() => review?.files.map((file, i) => lineCounts(file, states[i])) ?? [], [review, states])
+  const states = useMemo(() => perFile.map((f) => f.states), [perFile])
+  const counts = useMemo(() => perFile.map((f) => f.counts), [perFile])
   const totals = useMemo(() => {
     const sum: Partial<Record<Category, number>> = {}
     for (const c of counts) for (const [category, n] of Object.entries(c) as [Category, number][]) sum[category] = (sum[category] ?? 0) + n
@@ -109,6 +120,7 @@ export function Review({ repo, number }: { repo: string; number: number }) {
     [review],
   )
 
+  const openPolicy = useCallback(() => setShowPolicy(true), [])
   const onHover = useCallback((next: Hover | undefined) => {
     setHover((current) => (current?.file === next?.file && current?.block === next?.block ? current : next))
   }, [])
@@ -145,20 +157,30 @@ export function Review({ repo, number }: { repo: string; number: number }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // The file list follows the first file visible in the diff.
+  // The file list follows the file being read: the last one whose top has scrolled up to the top of the diff.
+  // (Counting any visible file made the previous file's last pixels win right after jumping to the next one.)
   useEffect(() => {
     if (!review) return
-    const visible = new Set<number>()
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        const index = Number((entry.target as HTMLElement).dataset.index)
-        if (entry.isIntersecting) visible.add(index)
-        else visible.delete(index)
-      }
-      if (visible.size) setActiveFile(Math.min(...visible))
-    })
-    document.querySelectorAll<HTMLElement>('section.file').forEach((el) => observer.observe(el))
-    return () => observer.disconnect()
+    const scroller = scrollParent(document.querySelector('.files'))
+    const target: EventTarget = scroller ?? window
+    let frame = 0
+    const update = () => {
+      frame = 0
+      const top = (scroller?.getBoundingClientRect().top ?? 0) + READING_LINE
+      const sections = document.querySelectorAll<HTMLElement>('section.file')
+      let active = 0
+      sections.forEach((el, i) => {
+        if (el.getBoundingClientRect().top <= top) active = i
+      })
+      setActiveFile(active)
+    }
+    const onScroll = () => (frame ||= requestAnimationFrame(update))
+    update()
+    target.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      target.removeEventListener('scroll', onScroll)
+      cancelAnimationFrame(frame)
+    }
   }, [review])
 
   if (loadError) {
@@ -192,85 +214,19 @@ export function Review({ repo, number }: { repo: string; number: number }) {
     <>
       <Layout
         header={
-          <LayoutHeader hasDivider>
-            <HStack gap={4} align="center" wrap="wrap" className="review-header">
-              <VStack gap={1} className="page-heading">
-                <Heading level={1} maxLines={1}>
-                  {pr.title}
-                </Heading>
-                <HStack gap={2} align="center" wrap="wrap">
-                  <Text type="supporting" className="review-title">
-                    {repo} #{pr.number} · {files.length} 个文件
-                  </Text>
-                  <JudgeStatus status={status} judged={judgedUnits} total={totalUnits} />
-                </HStack>
-              </VStack>
-              <HStack gap={4} align="center" className="review-toolbar">
-                <HStack gap={3} align="center" className="legend">
-                  {SHOWN.map((c) => (
-                    <Text key={c} type="supporting" className={`legend-item cat-${c}`}>
-                      {LABEL[c]} <Text color="inherit" className="legend-count">{totals[c] ?? 0}</Text>
-                    </Text>
-                  ))}
-                </HStack>
-                <HStack gap={1} align="center" className="toggle">
-                  <Switch size="sm" label="只看核心" value={coreOnly} onChange={setCoreOnly} />
-                  <Kbd keys="c" />
-                </HStack>
-                <Button size="sm" variant="ghost" label="审阅约定" icon={<Icon icon={ScrollText} size="sm" />} onClick={() => setShowPolicy(true)} />
-              </HStack>
-            </HStack>
-          </LayoutHeader>
+          <ReviewHeader
+            title={pr.title}
+            meta={`${repo} #${pr.number} · ${files.length} 个文件`}
+            status={status}
+            judged={judgedUnits}
+            total={totalUnits}
+            totals={totals}
+            coreOnly={coreOnly}
+            onCoreOnlyChange={setCoreOnly}
+            onShowPolicy={openPolicy}
+          />
         }
-        start={
-          <LayoutPanel width={300} hasDivider label="文件" padding={2}>
-            <VStack gap={4}>
-              {[
-                { key: 'judged', indexes: files.flatMap((f, i) => (f.skipped ? [] : [i])), header: undefined },
-                { key: 'skipped', indexes: files.flatMap((f, i) => (f.skipped ? [i] : [])), header: '只显示 diff' },
-              ].map(
-                ({ key, indexes, header }) =>
-                  indexes.length > 0 && (
-                    <List
-                      key={key}
-                      density="compact"
-                      className="file-list"
-                      header={
-                        header && (
-                          <Text type="supporting" weight="medium" className="file-list-header">
-                            {header}
-                          </Text>
-                        )
-                      }
-                    >
-                      {indexes.map((i) => {
-                        const file = files[i]
-                        const name = file.diff.path.split('/').pop()!
-                        const dir = file.diff.path.slice(0, -name.length)
-                        // The group says "diff only"; name the reason only when it is not the usual unsupported language.
-                        const reason = file.skipped && file.skipped !== '暂不支持的语言' ? file.skipped : ''
-                        return (
-                          <ListItem
-                            key={file.diff.path}
-                            className={`file-list-item${file.skipped ? ' is-skipped' : ''}`}
-                            label={name}
-                            description={[dir, reason].filter(Boolean).join(' · ') || undefined}
-                            isSelected={i === activeFile}
-                            endContent={!file.skipped && <FileCounts counts={counts[i]} />}
-                            onClick={(e) => {
-                              document.getElementById(`file-${i}`)?.scrollIntoView({ block: 'start' })
-                              // A mouse click should not leave a focus ring behind; keyboard focus keeps it.
-                              if (e.detail > 0) (e.currentTarget as HTMLElement).blur()
-                            }}
-                          />
-                        )
-                      })}
-                    </List>
-                  ),
-              )}
-            </VStack>
-          </LayoutPanel>
-        }
+        start={<FileList files={files} counts={counts} activeFile={activeFile} />}
         content={
           <LayoutContent padding={0}>
             <div
@@ -335,6 +291,135 @@ export function Review({ repo, number }: { repo: string; number: number }) {
       </Dialog>
     </>
   )
+}
+
+/**
+ * The header and file list are memoized apart from the diff: hovering changes only the review's hover state, and
+ * neither of these should re-render for it.
+ */
+const ReviewHeader = memo(function ReviewHeader({
+  title,
+  meta,
+  status,
+  judged,
+  total,
+  totals,
+  coreOnly,
+  onCoreOnlyChange,
+  onShowPolicy,
+}: {
+  title: string
+  meta: string
+  status: Status
+  judged: number
+  total: number
+  totals: Partial<Record<Category, number>>
+  coreOnly: boolean
+  onCoreOnlyChange: (value: boolean) => void
+  onShowPolicy: () => void
+}) {
+  return (
+    <LayoutHeader hasDivider>
+      <HStack gap={4} align="center" wrap="wrap" className="review-header">
+        <VStack gap={1} className="page-heading">
+          <Heading level={1} maxLines={1}>
+            {title}
+          </Heading>
+          <HStack gap={2} align="center" wrap="wrap">
+            <Text type="supporting" className="review-title">
+              {meta}
+            </Text>
+            <JudgeStatus status={status} judged={judged} total={total} />
+          </HStack>
+        </VStack>
+        <HStack gap={4} align="center" className="review-toolbar">
+          <HStack gap={3} align="center" className="legend">
+            {SHOWN.map((c) => (
+              <Text key={c} type="supporting" className={`legend-item cat-${c}`}>
+                {LABEL[c]} <Text color="inherit" className="legend-count">{totals[c] ?? 0}</Text>
+              </Text>
+            ))}
+          </HStack>
+          <HStack gap={1} align="center" className="toggle">
+            <Switch size="sm" label="只看核心" value={coreOnly} onChange={onCoreOnlyChange} />
+            <Kbd keys="c" />
+          </HStack>
+          <Button size="sm" variant="ghost" label="审阅约定" icon={<Icon icon={ScrollText} size="sm" />} onClick={onShowPolicy} />
+        </HStack>
+      </HStack>
+    </LayoutHeader>
+  )
+})
+
+const FileList = memo(function FileList({
+  files,
+  counts,
+  activeFile,
+}: {
+  files: ReviewStart['files']
+  counts: Partial<Record<Category, number>>[]
+  activeFile: number
+}) {
+  return (
+    <LayoutPanel width={300} hasDivider label="文件" padding={2}>
+      <VStack gap={4}>
+        {[
+          { key: 'judged', indexes: files.flatMap((f, i) => (f.skipped ? [] : [i])), header: undefined },
+          { key: 'skipped', indexes: files.flatMap((f, i) => (f.skipped ? [i] : [])), header: '只显示 diff' },
+        ].map(
+          ({ key, indexes, header }) =>
+            indexes.length > 0 && (
+              <List
+                key={key}
+                density="compact"
+                className="file-list"
+                header={
+                  header && (
+                    <Text type="supporting" weight="medium" className="file-list-header">
+                      {header}
+                    </Text>
+                  )
+                }
+              >
+                {indexes.map((i) => {
+                  const file = files[i]
+                  const name = file.diff.path.split('/').pop()!
+                  const dir = file.diff.path.slice(0, -name.length)
+                  // The group says "diff only"; name the reason only when it is not the usual unsupported language.
+                  const reason = file.skipped && file.skipped !== '暂不支持的语言' ? file.skipped : ''
+                  return (
+                    <ListItem
+                      key={file.diff.path}
+                      className={`file-list-item${file.skipped ? ' is-skipped' : ''}`}
+                      label={name}
+                      description={[dir, reason].filter(Boolean).join(' · ') || undefined}
+                      isSelected={i === activeFile}
+                      endContent={!file.skipped && <FileCounts counts={counts[i]} />}
+                      onClick={(e) => {
+                        document.getElementById(`file-${i}`)?.scrollIntoView({ block: 'start' })
+                        // A mouse click should not leave a focus ring behind; keyboard focus keeps it.
+                        if (e.detail > 0) (e.currentTarget as HTMLElement).blur()
+                      }}
+                    />
+                  )
+                })}
+              </List>
+            ),
+        )}
+      </VStack>
+    </LayoutPanel>
+  )
+})
+
+/** How far below the top of the diff a file's top may be and still count as the one being read. */
+const READING_LINE = 24
+
+/** The nearest ancestor that scrolls vertically, or null (the viewport). */
+function scrollParent(element: Element | null): Element | null {
+  for (let el = element?.parentElement; el; el = el.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(el).overflowY)) return el
+  }
+  return null
 }
 
 function JudgeStatus({ status, judged, total }: { status: Status; judged: number; total: number }) {
