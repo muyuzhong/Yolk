@@ -5,11 +5,11 @@
  */
 
 /* Category colors: each class sets the triple the rules below consume. */
-.cat-core { --c: var(--color-border-yellow); --cbg: var(--color-background-yellow); --ct: var(--color-text-yellow); --line: 70%; }
-.cat-defense { --c: var(--color-border-blue); --cbg: var(--color-background-blue); --ct: var(--color-text-blue); --line: 55%; }
-.cat-support { --c: var(--color-border-gray); --cbg: var(--color-background-muted); --ct: var(--color-text-secondary); --line: 100%; }
-/* Test code is the least important color on the page, so its lines get the faintest tint. */
-.cat-test { --c: var(--color-border-green); --cbg: var(--color-background-green); --ct: var(--color-text-green); --line: 30%; }
+.cat-core { --c: var(--color-border-yellow); --cbg: var(--color-background-yellow); --ct: var(--color-text-yellow); --line: 30%; }
+.cat-defense { --c: var(--color-border-blue); --cbg: var(--color-background-blue); --ct: var(--color-text-blue); --line: 25%; }
+.cat-support { --c: var(--color-border-emphasized); --cbg: var(--color-background-muted); --ct: var(--color-text-secondary); --line: 0%; }
+/* Test code is the least important color on the page, so its lines get a faint tint; support code gets none. */
+.cat-test { --c: var(--color-border-green); --cbg: var(--color-background-green); --ct: var(--color-text-green); --line: 18%; }
 .cat-pending { --c: var(--color-border-emphasized); --cbg: transparent; --ct: var(--color-text-secondary); }
 .cat-failed { --c: var(--color-error); --cbg: var(--color-error-muted); --ct: var(--color-error); }
 .cat-none { --c: var(--color-border-emphasized); --cbg: var(--color-background-muted); --ct: var(--color-text-secondary); }
@@ -216,16 +216,19 @@ section.file {
   user-select: none;
 }
 .line.add {
-  /* Line tints are lighter than the chips: long runs of color should not shout. */
+  /*
+   * The bar on the left carries the category; the line itself gets only a whisper of its color, so long runs of
+   * core code stay readable instead of turning into a block of yellow.
+   */
   background: color-mix(in srgb, var(--cbg) var(--line, 100%), transparent);
-  box-shadow: inset 3px 0 var(--c);
+  box-shadow: inset 4px 0 var(--c);
 }
 .line.add.unsure {
-  background: color-mix(in srgb, var(--cbg) 30%, transparent);
-  box-shadow: inset 3px 0 color-mix(in srgb, var(--c) 40%, transparent);
+  background: color-mix(in srgb, var(--cbg) calc(var(--line, 100%) / 2), transparent);
+  box-shadow: inset 4px 0 color-mix(in srgb, var(--c) 45%, transparent);
 }
 .line.add.hovered {
-  background: color-mix(in srgb, var(--c) 24%, transparent);
+  background: color-mix(in srgb, var(--c) 22%, transparent);
 }
 .line.del {
   background: color-mix(in srgb, var(--color-background-red) 55%, transparent);
