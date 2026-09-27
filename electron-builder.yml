@@ -1,5 +1,10 @@
 appId: com.muyuzhong.yolk
 productName: Yolk
+publish:
+  provider: github
+  owner: muyuzhong
+  repo: Yolk
+  channel: latest-${arch}
 directories:
   output: dist
 files:

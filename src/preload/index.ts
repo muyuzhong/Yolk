@@ -1,7 +1,14 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { ReviewProgress, YolkApi } from '../shared/api'
+import type { ReviewProgress, UpdateState, YolkApi } from '../shared/api'
 
 const api: YolkApi = {
+  getUpdateState: () => ipcRenderer.invoke('update:state'),
+  update: (action) => ipcRenderer.invoke('update:action', action),
+  onUpdateState: (listener) => {
+    const handler = (_event: IpcRendererEvent, state: UpdateState) => listener(state)
+    ipcRenderer.on('update:state', handler)
+    return () => ipcRenderer.off('update:state', handler)
+  },
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (update) => ipcRenderer.invoke('settings:save', update),
   saveConvention: (repo, text) => ipcRenderer.invoke('settings:convention', repo, text),

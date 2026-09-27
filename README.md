@@ -78,7 +78,7 @@ Yolk 把每一行新增代码放进三个类别里，让审阅者先抓主干：
 | Fedora / RPM 系发行版 | x64 / arm64 | `.rpm` |
 
 > [!NOTE]
-> 当前是预发布版本。初期版本未配置代码签名及 Apple 公证，macOS / Windows 可能提示未知开发者；受组织安全策略管理的电脑可能无法运行。请从本仓库下载，并核对 Release 中的 `SHA256SUMS`。
+> 初期版本未配置代码签名及 Apple 公证，macOS / Windows 可能提示未知开发者；受组织安全策略管理的电脑可能无法运行。请从本仓库下载，并核对 Release 中的 `SHA256SUMS`。
 
 ### 前置条件：GitHub CLI
 
@@ -116,6 +116,14 @@ Yolk 用两个模型，各司其职，都在客户端的**设置**里填写：
 - 从桌面图标启动不一定能读取终端中设置的环境变量，建议在设置里直接填写 key。
 
 </details>
+
+### 应用内更新
+
+从 0.0.2 起，打开 **设置 → 应用更新**，依次点击 **检查更新 → 下载更新 → 重启并安装**。下载会显示进度，关闭设置不会中断下载；不会自动下载或在退出时自动安装，失败后可重新检查并重试。
+
+支持 Windows 安装版和放在可写用户目录中的 Linux AppImage。建议将 AppImage 命名为 `Yolk.AppImage`，让后续更新保持菜单快捷方式的路径。首次从 0.0.1 升级仍需手动替换一次。
+
+macOS 当前未签名，更新页提供下载入口；deb / rpm / tar.gz 使用下载页或系统包管理器更新。应用内只检查正式发布的 Release，不接收草稿或预发布版本。
 
 ## 使用方式
 
@@ -208,7 +216,9 @@ docs/          设计文档与截图
 
 ### 发布
 
-`.github/workflows/release.yml` 在 macOS、Windows、Ubuntu 上分别构建 x64 / ARM64，先运行类型检查和测试，六组构建全部成功后才发布安装包和 SHA-256 校验文件。推送与 `package.json` 版本相同的 `v*` 标签即可发布；手动运行工作流只生成 Actions artifacts。打包使用 [electron-builder](https://www.electron.build/docs/)，macOS 安装包需要在 macOS 上构建。构建成功不等于每种系统都已完成实机验收。
+`.github/workflows/release.yml` 在 macOS、Windows、Ubuntu 上分别构建 x64 / ARM64，先运行类型检查和测试，六组构建全部成功后才发布安装包、更新元数据和 SHA-256 校验文件。每次递增版本号，推送与 `package.json` 版本相同的 `v*` 标签即可发布；手动运行工作流只生成 Actions artifacts。打包使用 [electron-builder](https://www.electron.build/docs/)，macOS 安装包需要在 macOS 上构建。构建成功不等于每种系统都已完成实机验收。
+
+更新通道为 `latest-x64` / `latest-arm64`，各系统和架构的 YAML 文件互不覆盖；`.blockmap` 文件也随安装包上传。
 
 ## 路线图
 

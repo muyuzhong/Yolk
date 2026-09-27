@@ -1,6 +1,6 @@
 {
   "name": "yolk",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,6 +18,7 @@
   "dependencies": {
     "@typesafe-ai/sdk": "^0.6.0",
     "@vscode/tree-sitter-wasm": "^0.3.1",
+    "electron-updater": "^6.8.9",
     "openai": "^7.23.0"
   },
   "devDependencies": {

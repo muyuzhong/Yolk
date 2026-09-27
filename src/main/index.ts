@@ -9,6 +9,7 @@ import { complete, explainMessages, explainSelectionMessages, type ExplainSelect
 import { currentUser, listPullRequests, listRepositories, repoKey, type PullRequestState } from '../core/sources/gh'
 import { MAX_SELECTION, type ReviewProgress, type ReviewStart, type SelectionLine, type SettingsUpdate } from '../shared/api'
 import { conventionFor, llmConfig, loadSettings, saveConvention, saveJudging, saveSettings, settingsView } from './settings'
+import { registerUpdates } from './updates'
 
 const reviews = new Map<number, { reviewId: string; controller: AbortController }>()
 /** The review each window shows; kept after judging ends because hover explanations read it. */
@@ -175,6 +176,7 @@ async function explainSelection(sender: WebContents, reviewId: string, fileIndex
 }
 
 app.whenReady().then(() => {
+  registerUpdates()
   ipcMain.handle('settings:get', () => settingsView())
   ipcMain.handle('settings:save', async (_event, update: SettingsUpdate) => {
     const settings = await saveSettings(update)

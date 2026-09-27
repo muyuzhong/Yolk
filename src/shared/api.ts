@@ -61,7 +61,19 @@ export interface SelectionLine {
 /** The most lines one selection may send to the general model. */
 export const MAX_SELECTION = 200
 
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'unsupported'
+  currentVersion: string
+  version?: string
+  percent?: number
+  message?: string
+}
+export type UpdateAction = 'check' | 'download' | 'install' | 'open-downloads'
+
 export interface YolkApi {
+  getUpdateState(): Promise<UpdateState>
+  update(action: UpdateAction): Promise<void>
+  onUpdateState(listener: (state: UpdateState) => void): () => void
   getSettings(): Promise<SettingsView>
   saveSettings(update: SettingsUpdate): Promise<SettingsView>
   /** Sets the default convention (`repo` null) or one repository's; empty text removes a repository's entry. */

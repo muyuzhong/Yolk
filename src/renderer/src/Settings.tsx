@@ -14,7 +14,7 @@ import { Text } from '@astryxdesign/core/Text'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import { VStack } from '@astryxdesign/core/VStack'
-import { Check, Cpu, KeyRound, Link2, Plus, ScrollText, SlidersHorizontal, X } from 'lucide-react'
+import { Check, Cpu, Download, KeyRound, Link2, Plus, ScrollText, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { DEFAULT_JUDGING, type JudgingUpdate, type Role } from '../../core/judgment'
 import type { SettingsUpdate, SettingsView } from '../../shared/api'
@@ -22,9 +22,11 @@ import { ListSkeleton } from './RepositoryList'
 import { errorMessage } from './labels'
 import { closeSettings, useSettingsDialog } from './settingsDialog'
 import { parseTarget } from './target'
+import { Updates } from './Updates'
 
-type Section = 'models' | 'conventions' | 'judging'
+type Section = 'models' | 'conventions' | 'judging' | 'updates'
 const SECTIONS: { id: Section; label: string; description: string; icon: typeof Cpu }[] = [
+  { id: 'updates', label: '应用更新', description: '检查新版本，下载后由你决定何时重启安装。', icon: Download },
   { id: 'models', label: '模型', description: 'Jev 和生成解释的通用模型', icon: Cpu },
   { id: 'conventions', label: '审阅约定', description: '告诉 Jev 哪些代码现阶段用不着', icon: ScrollText },
   { id: 'judging', label: '判断标准', description: '三种角色怎么区分，什么时候标 ✂ 和 ?。都有默认值，需要时再改。', icon: SlidersHorizontal },
@@ -272,6 +274,7 @@ function Settings({ repo }: { repo?: string }) {
           <IconButton variant="ghost" size="sm" label="关闭" tooltip="关闭（Esc）" icon={<Icon icon={X} size="sm" />} onClick={closeSettings} />
         </HStack>
         <VStack gap={8} className="settings-content">
+          {section === 'updates' && <Updates />}
           {loadError && <Banner status="error" title="读取设置失败" description={loadError} />}
           {saveError && <Banner status="error" title="保存失败" description={saveError} />}
           {!view && !loadError && <ListSkeleton rows={4} />}

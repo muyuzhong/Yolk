@@ -32,6 +32,9 @@ export async function mockApi(): Promise<YolkApi> {
   const cancelled = new Set<string>()
 
   return {
+    getUpdateState: async () => ({ status: 'unsupported', currentVersion: 'dev', message: '网页预览不支持安装更新。' }),
+    update: async () => {},
+    onUpdateState: () => () => {},
     getSettings: async () => settings,
     saveSettings: async (update: SettingsUpdate) => {
       settings = {
