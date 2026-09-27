@@ -21,6 +21,7 @@ export interface LineRow {
 
 export interface FoldRow {
   kind: 'fold'
+  expanded: boolean
   key: string
   lines: number
   counts: Partial<Record<Category | 'deleted' | 'context' | 'uncertain', number>>
@@ -110,18 +111,16 @@ export function buildRows(file: FileResult, states: Map<string, BlockState>, cor
     const flush = () => {
       if (run.length) {
         const key = run[0].key
-        if (expanded.has(key)) run.forEach(push)
-        else {
-          const counts: FoldRow['counts'] = {}
-          for (const row of run) {
-            if (!row.line.text.trim()) continue
-            const category = row.line.kind === 'del' ? 'deleted'
-              : row.unsure || row.category === 'pending' || row.category === 'failed' || (row.line.kind === 'add' && !row.block) ? 'uncertain'
-              : row.category === 'none' ? 'context' : row.category
-            counts[category] = (counts[category] ?? 0) + 1
-          }
-          rows.push({ kind: 'fold', key, lines: run.length, counts })
+        const counts: FoldRow['counts'] = {}
+        for (const row of run) {
+          if (!row.line.text.trim()) continue
+          const category = row.line.kind === 'del' ? 'deleted'
+            : row.unsure || row.category === 'pending' || row.category === 'failed' || (row.line.kind === 'add' && !row.block) ? 'uncertain'
+            : row.category === 'none' ? 'context' : row.category
+          counts[category] = (counts[category] ?? 0) + 1
         }
+        rows.push({ kind: 'fold', key, expanded: expanded.has(key), lines: run.length, counts })
+        if (expanded.has(key)) run.forEach(push)
       }
       run = []
     }

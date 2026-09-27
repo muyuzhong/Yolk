@@ -2,7 +2,7 @@ import { Icon } from '@astryxdesign/core/Icon'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { Text } from '@astryxdesign/core/Text'
 import { Token } from '@astryxdesign/core/Token'
-import { ChevronDown, ChevronRight, ChevronsUpDown } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { memo, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { ThemedToken } from 'shiki'
 import type { FileResult } from '../../core/analyze'
@@ -94,9 +94,14 @@ export const DiffFile = memo(function DiffFile({ index, file, states, counts, un
             if (row.kind === 'fold') {
               const summary = (Object.entries(row.counts) as [keyof FoldRow['counts'], number][]).map(([c, n]) => `${FOLD_LABEL[c]} ${n} 行`).join(' · ')
               return (
-                <button key={row.key} className="fold" onClick={() => setExpanded((s) => new Set(s).add(row.key))}>
-                  <Icon icon={ChevronsUpDown} size="xsm" />
-                  已折叠 {row.lines} 行{summary && ` · ${summary}`}
+                <button key={`fold-${row.key}`} className="fold" aria-expanded={row.expanded} onClick={() => setExpanded((s) => {
+                  const next = new Set(s)
+                  if (next.has(row.key)) next.delete(row.key)
+                  else next.add(row.key)
+                  return next
+                })}>
+                  <Icon icon={row.expanded ? ChevronDown : ChevronRight} size="xsm" />
+                  {row.expanded ? '收起这' : '已折叠'} {row.lines} 行{summary && ` · ${summary}`}
                 </button>
               )
             }

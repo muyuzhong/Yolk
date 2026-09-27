@@ -73,12 +73,22 @@ test('core only folds all non-core additions, preserving deletions in the core e
   assert.deepEqual(rows.filter(r => r.kind === 'fold').map(r => r.lines), [5, 1])
 })
 
-test('an expanded fold shows its lines again', () => {
+test('fold controls survive expansion and can collapse and reopen independently', () => {
   const folded = buildRows(file, blockStates(file, judgments, {}), true, new Set())
   const keys = folded.filter((r) => r.kind === 'fold').map(r => r.key)
   const states = blockStates(file, judgments, {})
   const rows = buildRows(file, states, true, new Set(keys))
-  assert.deepEqual(rows, buildRows(file, states, false, new Set()))
+  assert.deepEqual(rows.filter(r => r.kind !== 'fold'), buildRows(file, states, false, new Set()))
+  assert.ok(rows.filter(r => r.kind === 'fold').every(r => r.expanded))
+  assert.equal(new Set(rows.map(r => `${r.kind}-${r.key}`)).size, rows.length)
+  const expanded = new Set(keys)
+  expanded.delete(keys[0])
+  const collapsed = buildRows(file, states, true, expanded)
+  assert.deepEqual(collapsed.filter(r => r.kind === 'fold').map(r => r.expanded), [false, true])
+  assert.deepEqual(collapsed.filter(r => r.kind === 'line').map(r => r.key),
+    [...folded.filter(r => r.kind === 'line').map(r => r.key), keys[1]])
+  expanded.add(keys[0])
+  assert.deepEqual(buildRows(file, states, true, expanded), rows)
 })
 
 test('without confident core, pending, failed, unsure and unclassified code remains expandable', () => {
@@ -89,7 +99,7 @@ test('without confident core, pending, failed, unsure and unclassified code rema
   const unclassified = { diff: file.diff }
   const rows = buildRows(unclassified, new Map(), true, new Set())
   assert.deepEqual(describe(rows), ['hunk', 'fold {"context":1,"uncertain":5,"deleted":1}'])
-  assert.deepEqual(buildRows(unclassified, new Map(), true, new Set(['h0l0'])), buildRows(unclassified, new Map(), false, new Set()))
+  assert.deepEqual(buildRows(unclassified, new Map(), true, new Set(['h0l0'])).filter(r => r.kind !== 'fold'), buildRows(unclassified, new Map(), false, new Set()))
 })
 
 test('AST context keeps enclosing syntax and multiline core; unrelated deletions fold', async () => {
